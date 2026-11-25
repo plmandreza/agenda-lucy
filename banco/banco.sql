@@ -285,4 +285,18 @@ alter table agendamentos alter column status set default 'solicitado';
 create index if not exists agendamentos_status_idx on agendamentos (status);
 
 
+-- ---------------------------------------------------------------------
+-- 13. PERMISSÃO PARA O SERVIDOR (exigida pelo Supabase desde 30/05/2026)
+--     Só o "service_role" (chave secreta do server.js) recebe acesso.
+--     Visitantes (anon) e logins diretos (authenticated) ficam sem acesso.
+-- ---------------------------------------------------------------------
+grant usage on schema public to service_role;
+grant select, insert, update, delete on all tables in schema public to service_role;
+grant usage, select on all sequences in schema public to service_role;
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to service_role;
+alter default privileges in schema public
+  grant usage, select on sequences to service_role;
+
+
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
