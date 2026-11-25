@@ -370,19 +370,37 @@ const STATUS_TEXTO = {
 async function pedidoPorToken(token) {
   if (!RE_UUID.test(String(token))) return null;
   const p = await q(banco.from('agendamentos')
-    .select('id, token, cliente_id, status, inicio, fim, valor_total, observacao_cliente, criado_em')
+    .select('id, token, cliente_id, status, inicio, fim, valor_total, observacao_cliente, criado_em, forma_pagamento, pago, concluido_em')
     .eq('token', token).maybeSingle());
   if (!p) return null;
-  const cliente = await q(banco.from('clientes').select('nome').eq('id', p.cliente_id).single());
-  const servicos = await q(banco.from('agendamento_servicos')
-    .select('servico_id, nome, preco, duracao_min').eq('agendamento_id', p.id));
-  return { ...p, cliente_nome: cliente.nome, servicos };
+  const [cliente, servicos, avaliacao, retornos] = await Promise.all([
+    q(banco.from('clientes').select('nome').eq('id', p.cliente_id).single()),
+    q(banco.from('agendamento_servicos').select('servico_id, nome, preco, duracao_min').eq('agendamento_id', p.id)),
+    q(banco.from('avaliacoes').select('nota, comentario').eq('agendamento_id', p.id).maybeSingle()),
+    q(banco.from('agendamentos').select('id').eq('retorno_de', p.id).in('status', ['solicitado', 'agendado', 'concluido'])),
+  ]);
+  // De quantos em quantos dias a cliente costuma voltar (o menor entre os serviços feitos)
+  const ids = servicos.map((x) => x.servico_id).filter(Boolean);
+  const dias = ids.length ? (await q(banco.from('servicos').select('retorno_dias').in('id', ids))).map((x) => x.retorno_dias).filter(Boolean) : [];
+  return {
+    ...p, cliente_nome: cliente.nome, servicos, avaliacao,
+    tem_retorno: retornos.length > 0, retorno_dias: dias.length ? Math.min(...dias) : null,
+  };
 }
 
 const podeAlterar = (p) => ['solicitado', 'agendado'].includes(p.status) && Date.parse(p.inicio) > Date.now();
 
+// Quando oferecer o retorno à cliente: depende da escolha da Lucy na aba Salão
+// ("ao finalizar o serviço" ou "depois do pagamento").
+function sugestaoDeRetorno(p, cfg) {
+  if (p.status !== 'concluido' || p.tem_retorno) return null;
+  if (cfg?.retorno_momento === 'apos_pagamento' && !p.pago) return null;
+  const base = dataNoSalao(p.concluido_em || p.inicio);
+  return { dias: p.retorno_dias ?? 30, sugerido_para: somarDias(base, p.retorno_dias ?? 30) };
+}
+
 // O que a cliente pode ver do próprio pedido (sem ids internos).
-const pedidoParaCliente = (p) => ({
+const pedidoParaCliente = (p, cfg) => ({
   token: p.token,
   status: p.status,
   status_texto: STATUS_TEXTO[p.status] || p.status,
@@ -393,7 +411,23 @@ const pedidoParaCliente = (p) => ({
   primeiro_nome: String(p.cliente_nome || '').split(' ')[0],
   servicos: p.servicos.map((s) => ({ id: s.servico_id, nome: s.nome, preco: Number(s.preco), duracao_min: s.duracao_min })),
   pode_alterar: podeAlterar(p),
+  // Pagamento (Etapa 6): a cliente escolhe como prefere pagar; a Lucy confirma o recebimento.
+  forma_pagamento: p.forma_pagamento,
+  pago: p.pago,
+  pode_pagar: ['agendado', 'concluido'].includes(p.status) && !p.pago,
+  pix_disponivel: ['agendado', 'concluido'].includes(p.status) && !p.pago && Boolean(cfg?.chave_pix),
+  // Avaliação e retorno (Etapa 6)
+  avaliacao: p.avaliacao ?? null,
+  pode_avaliar: p.status === 'concluido' && !p.avaliacao,
+  retorno: sugestaoDeRetorno(p, cfg),
 });
+
+// Monta a resposta completa do pedido para a cliente.
+async function respostaCliente(token) {
+  const p = await pedidoPorToken(token);
+  if (!p) throw new ErroPublico(404, 'Pedido não encontrado. Confira o link.');
+  return pedidoParaCliente(p, await lerConfiguracoes());
+}
 
 // Confere se o horário pedido ainda está livre; devolve o início "oficial".
 async function conferirHorario(inicioPedido, duracao, cfg, ignorarId = null) {
@@ -494,9 +528,12 @@ app.post('/api/publico/pedidos', limitarPedidos, exigirConfiguracao, async (req,
     if (Object.keys(completar).length) await q(banco.from('clientes').update(completar).eq('id', cliente.id));
   }
 
+  // Se for um retorno (veio do botão "agendar retorno"), liga ao atendimento anterior.
+  const anterior = b.retorno_de ? await pedidoPorToken(b.retorno_de) : null;
   const novo = await q(banco.from('agendamentos').insert({
     cliente_id: cliente.id, inicio, fim, status: 'solicitado', origem: 'cliente',
     valor_total: total, observacao_cliente: obs || null,
+    retorno_de: anterior && anterior.cliente_id === cliente.id ? anterior.id : null,
   }).select('id, token').single());
 
   try {
@@ -506,14 +543,12 @@ app.post('/api/publico/pedidos', limitarPedidos, exigirConfiguracao, async (req,
     throw e;
   }
 
-  res.status(201).json(pedidoParaCliente(await pedidoPorToken(novo.token)));
+  res.status(201).json(await respostaCliente(novo.token));
 });
 
 // VER: o próprio pedido, pelo link pessoal.
 app.get('/api/publico/pedidos/:token', exigirConfiguracao, async (req, res) => {
-  const p = await pedidoPorToken(req.params.token);
-  if (!p) throw new ErroPublico(404, 'Pedido não encontrado. Confira o link.');
-  res.json(pedidoParaCliente(p));
+  res.json(await respostaCliente(req.params.token));
 });
 
 // EDITAR (remarcar): troca o horário e, se quiser, os serviços.
@@ -537,7 +572,7 @@ app.patch('/api/publico/pedidos/:token', limitarAlteracoes, exigirConfiguracao, 
     await q(banco.from('agendamento_servicos').delete().eq('agendamento_id', p.id));
     await gravarServicosDoPedido(p.id, lista);
   }
-  res.json(pedidoParaCliente(await pedidoPorToken(p.token)));
+  res.json(await respostaCliente(p.token));
 });
 
 // CANCELAR: a cliente desiste do horário (pode ser até no mesmo dia).
@@ -546,7 +581,7 @@ app.post('/api/publico/pedidos/:token/cancelar', limitarAlteracoes, exigirConfig
   if (!p) throw new ErroPublico(404, 'Pedido não encontrado. Confira o link.');
   if (!podeAlterar(p)) throw new ErroPublico(409, 'Este pedido não pode mais ser cancelado por aqui. Fale com a Lucy.');
   await q(banco.from('agendamentos').update({ status: 'cancelado', cancelado_por: 'cliente' }).eq('id', p.id));
-  res.json(pedidoParaCliente(await pedidoPorToken(p.token)));
+  res.json(await respostaCliente(p.token));
 });
 
 
@@ -595,6 +630,17 @@ const TIPOS = {
     return u.href;
   },
   whatsapp: (v) => { if (!v) return null; const n = normalizarWhatsapp(v); if (!n) throw new Error(); return n; },
+  // Chave Pix: e-mail, celular (+55...), CPF/CNPJ (só números) ou chave aleatória.
+  chavePix: (v) => {
+    const t = String(v ?? '').trim();
+    if (!t) return null;
+    if (emailValido(t) && t.length <= 77) return t.toLowerCase();
+    if (RE_UUID.test(t)) return t.toLowerCase();
+    if (/^\+55\d{10,11}$/.test(t.replace(/[\s()-]/g, ''))) return t.replace(/[\s()-]/g, '');
+    const n = t.replace(/[.\-/\s]/g, '');
+    if (/^\d{11}$|^\d{14}$/.test(n)) return n;
+    throw new Error();
+  },
   email: (v) => {
     const e = String(v ?? '').trim().toLowerCase();
     if (!e) return null;
@@ -733,7 +779,7 @@ const CAMPOS_CONFIG = {
   endereco: { tipo: 'texto', max: 200, rotulo: 'Endereço' },
   whatsapp_lucy: { tipo: 'whatsapp', rotulo: 'WhatsApp do salão' },
   email_lucy: { tipo: 'email', rotulo: 'E-mail' },
-  chave_pix: { tipo: 'texto', max: 120, rotulo: 'Chave Pix' },
+  chave_pix: { tipo: 'chavePix', rotulo: 'Chave Pix' },
   nome_recebedor_pix: { tipo: 'texto', max: 25, rotulo: 'Nome no Pix' },
   cidade_pix: { tipo: 'texto', max: 15, rotulo: 'Cidade no Pix' },
   retorno_momento: { tipo: 'opcao', opcoes: ['ao_finalizar', 'apos_pagamento'], rotulo: 'Quando oferecer retorno' },
@@ -863,6 +909,7 @@ app.post('/api/lucy/agendamentos', ...soLucy, async (req, res) => {
     cliente_id: clienteId, inicio, fim, status: 'agendado', origem: 'lucy',
     confirmado_em: new Date().toISOString(), valor_total: total,
     observacao_cliente: texto(b.observacao, 500) || null,
+    retorno_de: b.retorno_de && RE_UUID.test(String(b.retorno_de)) ? b.retorno_de : null,
   }).select('id').single());
   await gravarServicosDoPedido(novo.id, lista);
   res.status(201).json(await agendamentoCompleto(novo.id));
@@ -899,9 +946,9 @@ const ACOES = {
   concluir: { de: ['agendado'], para: 'concluido', extra: () => ({ concluido_em: new Date().toISOString() }) },
   faltou: { de: ['agendado'], para: 'faltou' },
 };
-app.post('/api/lucy/agendamentos/:id/:acao', ...soLucy, async (req, res) => {
+app.post('/api/lucy/agendamentos/:id/:acao', ...soLucy, async (req, res, next) => {
   const acao = ACOES[req.params.acao];
-  if (!acao) throw new ErroPublico(404, 'Ação desconhecida.');
+  if (!acao) return next();  // não é uma destas ações (ex.: "pagamento", mais abaixo)
   const atual = await agendamentoCompleto(exigirId(req.params.id));
   if (!acao.de.includes(atual.status)) {
     throw new ErroPublico(409, `Não dá para ${req.params.acao} um agendamento com situação "${STATUS_TEXTO[atual.status]}".`);
@@ -936,7 +983,131 @@ app.delete('/api/lucy/avaliacoes/:id', ...soLucy, async (req, res) => {
 
 
 // ---------------------------------------------------------------------
-// 8. ERROS
+// 8. PAGAMENTO, RETORNO E AVALIAÇÃO (Etapa 6)
+//
+//    Pix: o sistema monta o "Pix copia e cola" (padrão BR Code do Banco
+//    Central) com a chave da Lucy e o valor do atendimento. O dinheiro cai
+//    direto na conta dela; o sistema NÃO sabe quando o Pix entra — quem
+//    avisa é o app do banco, e a Lucy marca "pago" no painel.
+// ---------------------------------------------------------------------
+const semAcento = (t) => String(t ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^A-Za-z0-9 .-]/g, '').replace(/\s+/g, ' ').trim();
+const campoPix = (id, valor) => `${id}${String(valor.length).padStart(2, '0')}${valor}`;
+function crc16Pix(texto) {
+  let crc = 0xffff;
+  for (const byte of Buffer.from(texto, 'utf8')) {
+    crc ^= byte << 8;
+    for (let i = 0; i < 8; i++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc.toString(16).toUpperCase().padStart(4, '0');
+}
+function payloadPix({ chave, nome, cidade, valor, txid }) {
+  const conta = campoPix('00', 'br.gov.bcb.pix') + campoPix('01', chave);
+  let p = campoPix('00', '01') + campoPix('26', conta) + campoPix('52', '0000') + campoPix('53', '986')
+    + (valor > 0 ? campoPix('54', Number(valor).toFixed(2)) : '') + campoPix('58', 'BR')
+    + campoPix('59', semAcento(nome).slice(0, 25) || 'RECEBEDOR')
+    + campoPix('60', semAcento(cidade).slice(0, 15) || 'BRASIL')
+    + campoPix('62', campoPix('05', String(txid || '***').replace(/[^A-Za-z0-9]/g, '').slice(0, 25) || '***'));
+  p += '6304';
+  return p + crc16Pix(p);
+}
+function pixDoAgendamento(a, cfg) {
+  if (!cfg.chave_pix) throw new ErroPublico(409, 'A chave Pix ainda não foi cadastrada no painel (aba Salão).');
+  const valor = Number(a.valor_total);
+  return {
+    valor,
+    copia_e_cola: payloadPix({
+      chave: cfg.chave_pix, nome: cfg.nome_recebedor_pix || cfg.nome_salao, cidade: cfg.cidade_pix,
+      valor, txid: 'LUCY' + String(a.id).replace(/-/g, '').slice(0, 12).toUpperCase(),
+    }),
+  };
+}
+const FORMAS = ['pix', 'cartao', 'dinheiro'];
+
+// CLIENTE: o Pix do próprio horário (só se confirmado/realizado e ainda não pago)
+app.get('/api/publico/pedidos/:token/pix', exigirConfiguracao, async (req, res) => {
+  const p = await pedidoPorToken(req.params.token);
+  if (!p) throw new ErroPublico(404, 'Pedido não encontrado. Confira o link.');
+  if (!['agendado', 'concluido'].includes(p.status) || p.pago) throw new ErroPublico(409, 'Este horário não tem pagamento em aberto.');
+  res.json(pixDoAgendamento(p, await lerConfiguracoes()));
+});
+
+// CLIENTE: escolhe como prefere pagar (Pix, cartão ou dinheiro)
+app.post('/api/publico/pedidos/:token/pagamento', limitarAlteracoes, exigirConfiguracao, async (req, res) => {
+  const p = await pedidoPorToken(req.params.token);
+  if (!p) throw new ErroPublico(404, 'Pedido não encontrado. Confira o link.');
+  const forma = String(req.body?.forma ?? '');
+  if (!FORMAS.includes(forma)) throw new ErroPublico(400, 'Escolha Pix, cartão ou dinheiro.');
+  if (!['agendado', 'concluido'].includes(p.status) || p.pago) throw new ErroPublico(409, 'Este horário não tem pagamento em aberto.');
+  await q(banco.from('agendamentos').update({ forma_pagamento: forma }).eq('id', p.id));
+  res.json(await respostaCliente(p.token));
+});
+
+// CLIENTE: avalia o atendimento (uma vez, depois de realizado)
+app.post('/api/publico/pedidos/:token/avaliacao', limitarAlteracoes, exigirConfiguracao, async (req, res) => {
+  const p = await pedidoPorToken(req.params.token);
+  if (!p) throw new ErroPublico(404, 'Pedido não encontrado. Confira o link.');
+  if (p.status !== 'concluido') throw new ErroPublico(409, 'Dá para avaliar depois que o atendimento for realizado.');
+  if (p.avaliacao) throw new ErroPublico(409, 'Você já avaliou este atendimento. Obrigada!');
+  const nota = Number(req.body?.nota);
+  if (!Number.isInteger(nota) || nota < 1 || nota > 5) throw new ErroPublico(400, 'Escolha de 1 a 5 estrelas.');
+  await q(banco.from('avaliacoes').insert({ agendamento_id: p.id, nota, comentario: texto(req.body?.comentario, 600) || null }));
+  res.status(201).json(await respostaCliente(p.token));
+});
+
+// LUCY: Pix de um horário (para mostrar o QR code na hora)
+app.get('/api/lucy/agendamentos/:id/pix', ...soLucy, async (req, res) => {
+  const a = await agendamentoCompleto(exigirId(req.params.id));
+  res.json(pixDoAgendamento(a, await lerConfiguracoes()));
+});
+
+// LUCY: registra o pagamento (ou desfaz)
+app.post('/api/lucy/agendamentos/:id/pagamento', ...soLucy, async (req, res) => {
+  const a = await agendamentoCompleto(exigirId(req.params.id));
+  const pago = req.body?.pago !== false;
+  const forma = String(req.body?.forma ?? a.forma_pagamento ?? '');
+  if (pago) {
+    if (!FORMAS.includes(forma)) throw new ErroPublico(400, 'Escolha Pix, cartão ou dinheiro.');
+    if (!['agendado', 'concluido'].includes(a.status)) throw new ErroPublico(409, 'Só dá para registrar pagamento de horário confirmado ou realizado.');
+    await q(banco.from('agendamentos').update({ pago: true, forma_pagamento: forma, pago_em: new Date().toISOString() }).eq('id', a.id));
+  } else {
+    await q(banco.from('agendamentos').update({ pago: false, pago_em: null }).eq('id', a.id));
+  }
+  res.json(await agendamentoCompleto(a.id));
+});
+
+// LUCY: lista de retornos — clientes cujo retorno está chegando (até 14 dias) ou atrasado,
+// e que ainda não têm horário marcado. Só a Lucy vê.
+app.get('/api/lucy/retornos', ...soLucy, async (req, res) => {
+  const hoje = hojeNoSalao();
+  const [concluidos, futuros, servicos] = await Promise.all([
+    q(banco.from('agendamentos').select('id, cliente_id, inicio, concluido_em').eq('status', 'concluido').order('inicio', { ascending: false })),
+    q(banco.from('agendamentos').select('cliente_id').in('status', ['solicitado', 'agendado']).gte('inicio', new Date().toISOString())),
+    q(banco.from('servicos').select('id, retorno_dias')),
+  ]);
+  const comHorario = new Set(futuros.map((f) => f.cliente_id));
+  const ultimo = new Map();
+  for (const a of concluidos) if (!ultimo.has(a.cliente_id) && !comHorario.has(a.cliente_id)) ultimo.set(a.cliente_id, a);
+  if (!ultimo.size) return res.json([]);
+  const lista = await completarAgendamentos([...ultimo.values()].map((a) => ({ ...a, valor_total: 0 })));
+  const diasDe = new Map(servicos.map((s) => [s.id, s.retorno_dias]));
+  const resultado = lista.map((a) => {
+    const dias = a.servicos.map((x) => diasDe.get(x.servico_id)).filter(Boolean);
+    if (!dias.length) return null;
+    const prazo = somarDias(dataNoSalao(a.concluido_em || a.inicio), Math.min(...dias));
+    const faltam = Math.round((Date.parse(prazo) - Date.parse(hoje)) / 86400000);
+    return faltam <= 14 ? {
+      cliente: a.cliente, ultimo_atendimento: a.inicio, servicos: a.servicos.map((x) => x.nome),
+      servico_ids: a.servicos.map((x) => x.servico_id).filter(Boolean),
+      retorno_previsto: prazo, faltam_dias: faltam, agendamento_id: a.id,
+    } : null;
+  }).filter(Boolean).sort((x, y) => x.faltam_dias - y.faltam_dias);
+  res.json(resultado);
+});
+
+
+// ---------------------------------------------------------------------
+// 9. ERROS
 // ---------------------------------------------------------------------
 app.use('/api', (req, res) => res.status(404).json({ erro: 'Rota não encontrada.' }));
 
@@ -962,13 +1133,13 @@ app.use((err, req, res, _next) => {
 
 
 // ---------------------------------------------------------------------
-// 9. LIGAR O SERVIDOR
+// 10. LIGAR O SERVIDOR
 //    Na Vercel, ela mesma liga (usando o "export default").
 //    No computador: `npm start` e abra http://localhost:3000
 // ---------------------------------------------------------------------
 if (!process.env.VERCEL) {
   const porta = Number(process.env.PORT) || 3000;
-  app.listen(porta, () => console.log(`Lucy cabeleireira rodando em http://localhost:${porta}`));
+  app.listen(porta, () => console.log(`Lucy Cabeleireira rodando em http://localhost:${porta}`));
 }
 
 export default app;

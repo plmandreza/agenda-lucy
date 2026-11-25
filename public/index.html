@@ -247,6 +247,17 @@
       .quatro-colunas { grid-template-columns: 1fr 1fr; }
     }
 
+    .qr-pix { max-width: 15rem; margin: .5rem auto; background: #fff; border: 1px solid var(--borda); border-radius: 12px; padding: .4rem; }
+    .qr-pix svg { display: block; width: 100%; height: auto; }
+    .copia-cola { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .72rem; min-height: 4.5rem; word-break: break-all; color: var(--texto-suave); }
+    .opcoes-pagamento { display: flex; gap: .5rem; margin-bottom: .75rem; }
+    .opcoes-pagamento button { flex: 1; }
+    .linha-pagamento { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; margin-top: .75rem; padding-top: .75rem; border-top: 1px dashed var(--borda); }
+    .pago { color: var(--verde); font-weight: 700; display: flex; align-items: center; gap: .75rem; margin: .75rem 0 0; }
+    .selo.atrasado { background: var(--vermelho-claro); color: var(--vermelho); }
+    .escolher-estrelas { display: flex; gap: .25rem; }
+    .escolher-estrelas button { background: none; border: none; color: #c98a00; font-size: 2.2rem; padding: 0 .15rem; min-height: 3rem; line-height: 1; }
+    .escolher-estrelas button:hover { background: none; transform: scale(1.1); }
     .catalogo { padding: .85rem 0; border-top: 1px solid var(--borda); }
     .catalogo:first-of-type { border-top: none; padding-top: .25rem; }
     .codigo { font-size: 1.05rem; color: var(--vinho-escuro); letter-spacing: .5px; margin-right: .35rem; }
@@ -434,6 +445,189 @@
 
 
   // ===================================================================
+  // QR CODE (desenhado aqui mesmo, sem depender de sites externos)
+  // Padrão ISO/IEC 18004: modo byte, correção de erro nível M, versões 1 a 40.
+  // ===================================================================
+  const QR = (() => {
+    const ECC_M = [-1, 10, 16, 26, 18, 24, 16, 18, 22, 22, 26, 30, 22, 22, 24, 24, 28, 28, 26, 26, 26, 26, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28, 28];
+    const BLOCOS_M = [-1, 1, 1, 1, 2, 2, 4, 4, 4, 5, 5, 5, 8, 9, 9, 10, 10, 11, 13, 14, 16, 17, 17, 18, 20, 21, 23, 25, 26, 28, 29, 31, 33, 35, 37, 38, 40, 43, 45, 47, 49];
+
+    const modulosDeDados = (v) => {
+      let r = (16 * v + 128) * v + 64;
+      if (v >= 2) {
+        const n = Math.floor(v / 7) + 2;
+        r -= (25 * n - 10) * n - 55;
+        if (v >= 7) r -= 36;
+      }
+      return r;
+    };
+    const capacidade = (v) => Math.floor(modulosDeDados(v) / 8) - ECC_M[v] * BLOCOS_M[v];
+
+    // Aritmética do campo de Galois GF(256) e Reed-Solomon
+    const mult = (x, y) => {
+      let z = 0;
+      for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >>> 7) * 0x11d); z ^= ((y >>> i) & 1) * x; }
+      return z;
+    };
+    const divisor = (grau) => {
+      const r = new Array(grau).fill(0); r[grau - 1] = 1;
+      let raiz = 1;
+      for (let i = 0; i < grau; i++) {
+        for (let j = 0; j < r.length; j++) { r[j] = mult(r[j], raiz); if (j + 1 < r.length) r[j] ^= r[j + 1]; }
+        raiz = mult(raiz, 0x02);
+      }
+      return r;
+    };
+    const resto = (dados, div) => {
+      const r = new Array(div.length).fill(0);
+      for (const b of dados) {
+        const f = b ^ r.shift(); r.push(0);
+        div.forEach((c, i) => { r[i] ^= mult(c, f); });
+      }
+      return r;
+    };
+
+    function gerar(texto) {
+      const bytes = Array.from(new TextEncoder().encode(texto));
+      let v = 1;
+      for (; v <= 40; v++) {
+        const bitsContagem = v <= 9 ? 8 : 16;
+        if (4 + bitsContagem + bytes.length * 8 <= capacidade(v) * 8) break;
+      }
+      if (v > 40) throw new Error('Texto grande demais para QR code');
+
+      // 1) Sequência de bits: modo byte (0100), tamanho, dados, terminador e preenchimento
+      const bits = [];
+      const por = (valor, n) => { for (let i = n - 1; i >= 0; i--) bits.push((valor >>> i) & 1); };
+      por(4, 4); por(bytes.length, v <= 9 ? 8 : 16); bytes.forEach((b) => por(b, 8));
+      const cap = capacidade(v) * 8;
+      por(0, Math.min(4, cap - bits.length));
+      por(0, (8 - (bits.length % 8)) % 8);
+      for (let pad = 0xec; bits.length < cap; pad ^= 0xec ^ 0x11) por(pad, 8);
+      const dados = [];
+      for (let i = 0; i < bits.length; i += 8) dados.push(parseInt(bits.slice(i, i + 8).join(''), 2));
+
+      // 2) Correção de erros e intercalação dos blocos
+      const nBlocos = BLOCOS_M[v], eccLen = ECC_M[v];
+      const total = Math.floor(modulosDeDados(v) / 8);
+      const curtos = nBlocos - (total % nBlocos), tamCurto = Math.floor(total / nBlocos);
+      const div = divisor(eccLen), blocos = [];
+      for (let i = 0, k = 0; i < nBlocos; i++) {
+        const d = dados.slice(k, k + tamCurto - eccLen + (i < curtos ? 0 : 1));
+        k += d.length;
+        const ecc = resto(d, div);
+        if (i < curtos) d.push(0);
+        blocos.push(d.concat(ecc));
+      }
+      const final = [];
+      for (let i = 0; i < blocos[0].length; i++) {
+        blocos.forEach((b, j) => { if (i !== tamCurto - eccLen || j >= curtos) final.push(b[i]); });
+      }
+
+      // 3) Desenho: padrões fixos, dados, máscara
+      const tam = v * 4 + 17;
+      const mod = Array.from({ length: tam }, () => new Array(tam).fill(false));
+      const fixo = Array.from({ length: tam }, () => new Array(tam).fill(false));
+      const pinta = (x, y, escuro) => { mod[y][x] = escuro; fixo[y][x] = true; };
+      for (let i = 0; i < tam; i++) { pinta(6, i, i % 2 === 0); pinta(i, 6, i % 2 === 0); }
+      const localizador = (cx, cy) => {
+        for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+          const x = cx + dx, y = cy + dy, d = Math.max(Math.abs(dx), Math.abs(dy));
+          if (x >= 0 && x < tam && y >= 0 && y < tam) pinta(x, y, d !== 2 && d !== 4);
+        }
+      };
+      localizador(3, 3); localizador(tam - 4, 3); localizador(3, tam - 4);
+      if (v > 1) {
+        const n = Math.floor(v / 7) + 2;
+        const passo = v === 32 ? 26 : Math.ceil((v * 4 + 4) / (n * 2 - 2)) * 2;
+        const pos = [6];
+        for (let p = tam - 7; pos.length < n; p -= passo) pos.splice(1, 0, p);
+        pos.forEach((a, i) => pos.forEach((b, j) => {
+          if ((i === 0 && j === 0) || (i === 0 && j === n - 1) || (i === n - 1 && j === 0)) return;
+          for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) pinta(a + dx, b + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+        }));
+      }
+      const formato = (mascara) => {
+        const d = (0 << 3) | mascara;  // nível M = 00
+        let r = d;
+        for (let i = 0; i < 10; i++) r = (r << 1) ^ ((r >>> 9) * 0x537);
+        const b = ((d << 10) | r) ^ 0x5412;
+        const bit = (i) => ((b >>> i) & 1) !== 0;
+        for (let i = 0; i <= 5; i++) pinta(8, i, bit(i));
+        pinta(8, 7, bit(6)); pinta(8, 8, bit(7)); pinta(7, 8, bit(8));
+        for (let i = 9; i < 15; i++) pinta(14 - i, 8, bit(i));
+        for (let i = 0; i < 8; i++) pinta(tam - 1 - i, 8, bit(i));
+        for (let i = 8; i < 15; i++) pinta(8, tam - 15 + i, bit(i));
+        pinta(8, tam - 8, true);
+      };
+      formato(0);  // reserva a área do formato
+      if (v >= 7) {
+        let r = v;
+        for (let i = 0; i < 12; i++) r = (r << 1) ^ ((r >>> 11) * 0x1f25);
+        const b = (v << 12) | r;
+        for (let i = 0; i < 18; i++) {
+          const e = ((b >>> i) & 1) !== 0, a = tam - 11 + (i % 3), c = Math.floor(i / 3);
+          pinta(a, c, e); pinta(c, a, e);
+        }
+      }
+      let i = 0;
+      for (let dir = tam - 1; dir >= 1; dir -= 2) {
+        if (dir === 6) dir = 5;
+        for (let vert = 0; vert < tam; vert++) for (let j = 0; j < 2; j++) {
+          const x = dir - j, sobe = ((dir + 1) & 2) === 0, y = sobe ? tam - 1 - vert : vert;
+          if (!fixo[y][x] && i < final.length * 8) { mod[y][x] = ((final[i >>> 3] >>> (7 - (i & 7))) & 1) !== 0; i++; }
+        }
+      }
+      const MASCARAS = [
+        (x, y) => (x + y) % 2 === 0, (x, y) => y % 2 === 0, (x) => x % 3 === 0, (x, y) => (x + y) % 3 === 0,
+        (x, y) => (Math.floor(x / 3) + Math.floor(y / 2)) % 2 === 0, (x, y) => ((x * y) % 2) + ((x * y) % 3) === 0,
+        (x, y) => (((x * y) % 2) + ((x * y) % 3)) % 2 === 0, (x, y) => (((x + y) % 2) + ((x * y) % 3)) % 2 === 0,
+      ];
+      const aplica = (m) => { for (let y = 0; y < tam; y++) for (let x = 0; x < tam; x++) if (!fixo[y][x] && MASCARAS[m](x, y)) mod[y][x] = !mod[y][x]; };
+      // Escolhe a máscara com menos "penalidade" (sequências longas, blocos e desequilíbrio)
+      const penalidade = () => {
+        let p = 0;
+        for (let k = 0; k < 2; k++) for (let a = 0; a < tam; a++) {
+          let corr = 1;
+          for (let b = 1; b < tam; b++) {
+            const atual = k ? mod[b][a] : mod[a][b], ant = k ? mod[b - 1][a] : mod[a][b - 1];
+            if (atual === ant) { corr++; if (corr === 5) p += 3; else if (corr > 5) p++; } else corr = 1;
+          }
+        }
+        for (let y = 0; y < tam - 1; y++) for (let x = 0; x < tam - 1; x++) {
+          const c = mod[y][x];
+          if (c === mod[y][x + 1] && c === mod[y + 1][x] && c === mod[y + 1][x + 1]) p += 3;
+        }
+        const escuros = mod.flat().filter(Boolean).length;
+        p += Math.floor(Math.abs(escuros * 20 - tam * tam * 10) / (tam * tam)) * 10;
+        return p;
+      };
+      let melhor = 0, menor = Infinity;
+      for (let m = 0; m < 8; m++) {
+        aplica(m); formato(m);
+        const pen = penalidade();
+        if (pen < menor) { menor = pen; melhor = m; }
+        aplica(m);
+      }
+      aplica(melhor); formato(melhor);
+      return mod;
+    }
+
+    // Desenha como imagem SVG (com margem branca de 4 módulos, exigida pelo padrão)
+    function svg(texto, rotulo = 'QR code') {
+      const m = gerar(texto), n = m.length, margem = 4, lado = n + margem * 2;
+      let d = '';
+      m.forEach((linha, y) => linha.forEach((e, x) => { if (e) d += `M${x + margem},${y + margem}h1v1h-1z`; }));
+      return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${lado} ${lado}" role="img" aria-label="${rotulo}"
+        shape-rendering="crispEdges"><rect width="${lado}" height="${lado}" fill="#fff"/><path d="${d}" fill="#000"/></svg>`;
+    }
+    return { gerar, svg };
+  })();
+
+  const FORMAS_TXT = { pix: 'Pix', cartao: 'cartão', dinheiro: 'dinheiro' };
+
+
+  // ===================================================================
   // 3. TELAS DA CLIENTE
   // ===================================================================
 
@@ -537,6 +731,7 @@
     try { d = await carregarSalao(); } catch (e) { return telaErro(e.message); }
 
     const remarcar = params.get('remarcar');
+    const retorno = params.get('retorno');
     ag = {
       passo: 1, servicos: new Set(), data: null, inicio: null, horarios: [], remarcar: null, pedido: null,
       ...guardado.ler('lucy.cliente', {}),  // nome, whatsapp e e-mail usados da última vez neste aparelho
@@ -552,6 +747,18 @@
         ag.diaManual = true;
         p.servicos.forEach((s) => { if (d.servicos.some((x) => x.id === s.id)) ag.servicos.add(s.id); });
       } catch (e) { return telaErro(e.message); }
+    }
+    if (retorno) {
+      // Retorno: já vem com os mesmos serviços e o dia sugerido
+      try {
+        const p = await api(`/api/publico/pedidos/${encodeURIComponent(retorno)}`);
+        ag.retornoDe = retorno;
+        p.servicos.forEach((s) => { if (d.servicos.some((x) => x.id === s.id)) ag.servicos.add(s.id); });
+        if (p.retorno?.sugerido_para) {
+          ag.sugestaoRetorno = p.retorno.sugerido_para;
+          ag.data = p.retorno.sugerido_para < d.agenda.ate ? p.retorno.sugerido_para : d.agenda.ate;
+        }
+      } catch { /* se o link estiver errado, segue como pedido normal */ }
     }
     desenharPasso();
   }
@@ -645,12 +852,15 @@
     const { hoje, ate } = salaoCache.agenda;
     const dias = [];
     for (let d = hoje; d <= ate; d = somarDias(d, 1)) dias.push(d);
-    if (!ag.data || !diaAberto(ag.data)) ag.data = dias.find(diaAberto) ?? null;
+    if (!ag.data || ag.data > ate || ag.data < hoje || !diaAberto(ag.data)) {
+      ag.data = dias.find((d) => d >= (ag.data && ag.data <= ate ? ag.data : hoje) && diaAberto(d)) ?? dias.find(diaAberto) ?? null;
+    }
 
     $app.innerHTML = `
       <div class="cartao">
         ${cabecalhoDoPasso('Escolha o dia e o horário')}
         <p class="suave">Duração prevista: ${fmt.duracao(escolha().duracao)}</p>
+        ${ag.sugestaoRetorno ? `<p class="mensagem atencao">Retorno sugerido: por volta de <strong>${esc(fmt.partesDoDia(ag.sugestaoRetorno).longa)}</strong>.</p>` : ''}
         <div class="dias" role="group" aria-label="Dias">
           ${dias.map((d) => {
             const p = fmt.partesDoDia(d), aberto = diaAberto(d);
@@ -807,7 +1017,7 @@
           p = await api('/api/publico/pedidos', { metodo: 'POST', corpo: {
             nome: ag.nome, whatsapp: ag.whatsapp, email: ag.email,
             necessidades: ag.necessidades, observacao: ag.observacao,
-            servicos: [...ag.servicos], inicio: ag.inicio,
+            servicos: [...ag.servicos], inicio: ag.inicio, retorno_de: ag.retornoDe ?? null,
           } });
           guardado.salvar('lucy.cliente', { nome: ag.nome, whatsapp: ag.whatsapp, email: ag.email });
         }
@@ -878,6 +1088,44 @@
           <div id="confirmar"></div>` : ''}
         ${!tipoAviso && botaoZap ? `<div style="margin-top:.75rem">${botaoZap}</div>` : ''}
       </div>
+      ${p.retorno ? `
+      <div class="cartao destaque">
+        <h2>Que tal já deixar seu retorno marcado?</h2>
+        <p>Para ${esc(servicosTexto(p).toLowerCase())}, o ideal é voltar por volta de <strong>${esc(fmt.partesDoDia(p.retorno.sugerido_para).longa)}</strong>.</p>
+        <a class="botao botao-largo" href="#/agendar?retorno=${esc(p.token)}">Agendar meu retorno</a>
+      </div>` : ''}
+      ${p.pago || p.pode_pagar ? `
+      <div class="cartao" id="pagamento">
+        <h2>Pagamento</h2>
+        ${p.pago ? `<p class="mensagem sucesso" style="margin:0">✔ Pagamento confirmado pela Lucy${p.forma_pagamento ? ` (${esc(FORMAS_TXT[p.forma_pagamento])})` : ''}. Obrigada!</p>` : `
+          <p class="suave">Como você prefere pagar? Total: <strong>${fmt.reais(p.valor_total)}</strong></p>
+          <div class="opcoes-pagamento" role="group" aria-label="Forma de pagamento">
+            ${[['pix', 'Pix'], ['cartao', 'Cartão'], ['dinheiro', 'Dinheiro']].map(([v, t]) => `
+              <button class="pequeno ${p.forma_pagamento === v ? '' : 'secundario'}" data-forma="${v}" aria-pressed="${p.forma_pagamento === v}">${t}</button>`).join('')}
+          </div>
+          <div id="area-pix">${p.forma_pagamento === 'pix'
+            ? (p.pix_disponivel ? '<button class="botao-largo" id="ver-pix">Mostrar o QR code do Pix</button>'
+              : '<p class="mensagem atencao">A chave Pix ainda não foi cadastrada. Você pode pagar no salão.</p>')
+            : p.forma_pagamento ? '<p class="suave">Combinado! É só pagar no salão, no dia do atendimento.</p>' : ''}</div>
+          <p class="mensagem erro" id="msg-pag" role="alert"></p>`}
+      </div>` : ''}
+      ${p.avaliacao ? `
+      <div class="cartao">
+        <h2>Sua avaliação</h2>
+        <p class="estrelas" aria-label="${p.avaliacao.nota} de 5 estrelas">${'★'.repeat(p.avaliacao.nota)}${'☆'.repeat(5 - p.avaliacao.nota)}</p>
+        ${p.avaliacao.comentario ? `<p>${esc(p.avaliacao.comentario)}</p>` : ''}
+        <p class="suave" style="margin:0">Obrigada por avaliar! 💜</p>
+      </div>` : p.pode_avaliar ? `
+      <form class="cartao" id="form-avaliar" novalidate>
+        <h2>Como foi o seu atendimento?</h2>
+        <div class="escolher-estrelas" role="radiogroup" aria-label="Nota de 1 a 5 estrelas">
+          ${[1, 2, 3, 4, 5].map((n) => `<button type="button" role="radio" aria-checked="false" data-nota="${n}" aria-label="${n} estrela${n > 1 ? 's' : ''}">☆</button>`).join('')}
+        </div>
+        <label for="comentario">Quer deixar um comentário? <span class="opcional">(opcional)</span></label>
+        <textarea id="comentario" maxlength="600"></textarea>
+        <p class="mensagem erro" id="msg-aval" role="alert"></p>
+        <button type="submit" class="botao-largo">Enviar avaliação</button>
+      </form>` : ''}
       <div class="cartao">
         <h2>Seu link pessoal</h2>
         <p class="suave">Guarde este link: é por ele que você vê, remarca ou cancela seu horário.
@@ -888,6 +1136,62 @@
         </div>
       </div>
       <a class="botao secundario botao-largo" href="#/agendar">Fazer outro pedido</a>`;
+
+    // Pagamento: escolher a forma e, se for Pix, mostrar o QR code
+    $app.querySelectorAll('[data-forma]').forEach((b) => {
+      b.onclick = async () => {
+        b.disabled = true;
+        try {
+          await api(`/api/publico/pedidos/${encodeURIComponent(p.token)}/pagamento`, { metodo: 'POST', corpo: { forma: b.dataset.forma } });
+          await telaPedido(p.token, new URLSearchParams());
+          document.getElementById('pagamento')?.scrollIntoView({ block: 'start' });
+        } catch (e) { b.disabled = false; document.getElementById('msg-pag').textContent = e.message; }
+      };
+    });
+    document.getElementById('ver-pix')?.addEventListener('click', async (ev) => {
+      ev.target.disabled = true;
+      try {
+        const pix = await api(`/api/publico/pedidos/${encodeURIComponent(p.token)}/pix`);
+        const zapComprovante = salao?.salao?.whatsapp ? zapCom(salao.salao.whatsapp,
+          `Olá, Lucy! Aqui é ${p.primeiro_nome}. Fiz o Pix de ${fmt.reais(pix.valor)} do meu horário de ${quandoTexto(p)}.`) : null;
+        document.getElementById('area-pix').innerHTML = `
+          <div class="qr-pix">${QR.svg(pix.copia_e_cola, 'QR code do Pix')}</div>
+          <p style="text-align:center;margin:.25rem 0 1rem"><strong>${fmt.reais(pix.valor)}</strong></p>
+          <p class="suave">Abra o app do seu banco, escolha "Pix → Ler QR code" e aponte para a imagem.
+            Se estiver no celular, use o <strong>Pix copia e cola</strong>:</p>
+          <textarea class="copia-cola" readonly aria-label="Pix copia e cola">${esc(pix.copia_e_cola)}</textarea>
+          <button class="botao-largo" id="copiar-pix">Copiar código Pix</button>
+          ${zapComprovante ? `<a class="botao secundario botao-largo" href="${esc(zapComprovante)}" target="_blank" rel="noopener">${ICONE_ZAP} Avisar a Lucy que paguei</a>` : ''}
+          <p class="suave" style="margin-bottom:0">A Lucy confere no banco e confirma o pagamento por aqui.</p>`;
+        document.getElementById('copiar-pix').onclick = async (e) => { e.target.textContent = await copiarTexto(pix.copia_e_cola) ? 'Código copiado!' : 'Selecione o código e copie'; };
+      } catch (e) { ev.target.disabled = false; document.getElementById('msg-pag').textContent = e.message; }
+    });
+
+    // Avaliação com estrelas
+    const $aval = document.getElementById('form-avaliar');
+    if ($aval) {
+      let nota = 0;
+      const $estrelas = [...$aval.querySelectorAll('[data-nota]')];
+      const pintar = () => $estrelas.forEach((b) => {
+        const n = Number(b.dataset.nota);
+        b.textContent = n <= nota ? '★' : '☆';
+        b.classList.toggle('acesa', n <= nota);
+        b.setAttribute('aria-checked', String(n === nota));
+      });
+      $estrelas.forEach((b) => { b.onclick = () => { nota = Number(b.dataset.nota); pintar(); }; });
+      $aval.onsubmit = async (ev) => {
+        ev.preventDefault();
+        const $msg = document.getElementById('msg-aval');
+        if (!nota) { $msg.textContent = 'Toque nas estrelas para dar sua nota.'; return; }
+        const $b = $aval.querySelector('button[type=submit]');
+        $b.disabled = true; $b.textContent = 'Enviando…';
+        try {
+          await api(`/api/publico/pedidos/${encodeURIComponent(p.token)}/avaliacao`, {
+            metodo: 'POST', corpo: { nota, comentario: document.getElementById('comentario').value.trim() } });
+          await telaPedido(p.token, new URLSearchParams());
+        } catch (e) { $msg.textContent = e.message; $b.disabled = false; $b.textContent = 'Enviar avaliação'; }
+      };
+    }
 
     document.getElementById('copiar').onclick = async () => {
       const $b = document.getElementById('copiar');
@@ -954,7 +1258,7 @@
   // 4. ÁREA DA LUCY (painel) — criar, ver, editar e excluir
   // ===================================================================
   const ABAS = [
-    ['pedidos', 'Pedidos'], ['agenda', 'Agenda'], ['clientes', 'Clientes'], ['servicos', 'Serviços'],
+    ['pedidos', 'Pedidos'], ['agenda', 'Agenda'], ['retornos', 'Retornos'], ['clientes', 'Clientes'], ['servicos', 'Serviços'],
     ['horarios', 'Horários'], ['promocoes', 'Promoções'], ['salao', 'Salão'], ['avaliacoes', 'Avaliações'],
   ];
   const painelApi = (caminho, opcoes = {}) => api('/api/lucy' + caminho, { ...opcoes, autenticado: true });
@@ -968,12 +1272,13 @@
   let ultimoAviso = null;
   // "extra" é HTML montado pelo próprio painel (ex.: botão do WhatsApp).
   function avisar(mensagem, tipo = 'sucesso', extra = '') {
-    ultimoAviso = { mensagem, tipo, extra, ate: Date.now() + (extra ? 20000 : 6000) };
+    ultimoAviso = { mensagem, tipo, extra, onde: location.hash, ate: Date.now() + (extra ? 20000 : 6000) };
     mostrarAviso();
   }
   function mostrarAviso() {
     const $a = document.getElementById('aviso');
     if (!$a || !ultimoAviso || Date.now() > ultimoAviso.ate) return;
+    if (ultimoAviso.onde !== location.hash) { ultimoAviso = null; return; }  // mudou de tela: o aviso era da outra
     $a.innerHTML = `<div class="mensagem ${ultimoAviso.tipo}">${esc(ultimoAviso.mensagem)}${ultimoAviso.extra ?? ''}</div>`;
     $a.scrollIntoView({ block: 'nearest' });
     clearTimeout(avisar.t);
@@ -1022,17 +1327,19 @@
     const marcar = `${enderecoSite()}#/agendar`;
     const endereco = cfgPainel?.endereco ? `\nEndereço: ${cfgPainel.endereco}` : '';
     return {
-      agendado: `Oi, ${nome}! Aqui é a Lucy 💜\nSeu horário está confirmado: ${quandoTexto(a)} (${servicosTexto(a)}).${endereco}\nPara ver, remarcar ou cancelar: ${link}`,
-      solicitado: `Oi, ${nome}! Aqui é a Lucy. Recebi seu pedido para ${quandoTexto(a)} (${servicosTexto(a)}). Já já te confirmo!`,
-      recusado: `Oi, ${nome}! Aqui é a Lucy. Infelizmente não vou conseguir te atender ${quandoTexto(a)}. Pode escolher outro horário por aqui? ${marcar}`,
-      cancelado: `Oi, ${nome}! Aqui é a Lucy. Seu horário de ${quandoTexto(a)} foi cancelado. Quando quiser, é só marcar de novo: ${marcar}`,
-      concluido: `Oi, ${nome}! Obrigada pela visita 💜 Quando quiser voltar, é só marcar: ${marcar}`,
-      faltou: `Oi, ${nome}! Aqui é a Lucy. Senti sua falta no horário de ${quandoTexto(a)}. Está tudo bem? Se quiser, marcamos outro: ${marcar}`,
-      lembrete: `Oi, ${nome}! Aqui é a Lucy 💜 Passando para lembrar do seu horário amanhã, às ${fmt.hora(a.inicio)} (${servicosTexto(a)}).${endereco}\nSe precisar remarcar: ${link}`,
-      atraso: `Oi, ${nome}! Aqui é a Lucy. Vou me atrasar uns ${extra.minutos} minutinhos para o seu horário das ${fmt.hora(a.inicio)}. Me desculpe! 💜`,
-      folga: `Oi, ${nome}! Aqui é a Lucy. Não vou poder atender no dia ${fmt.dataLonga(a.inicio)}${extra.motivo ? ` (${extra.motivo})` : ''}. Me desculpe! Vamos remarcar seu horário? ${link}`,
-      especial: `Oi, ${nome}! Aqui é a Lucy. No dia ${fmt.dataLonga(a.inicio)} vou atender das ${extra.abre} às ${extra.fecha}${extra.motivo ? ` (${extra.motivo})` : ''}. Seu horário é às ${fmt.hora(a.inicio)}. Se precisar remarcar: ${link}`,
-    }[tipo];
+      agendado: () => `Oi, ${nome}! Aqui é a Lucy 💜\nSeu horário está confirmado: ${quandoTexto(a)} (${servicosTexto(a)}).${endereco}\nPara ver, remarcar ou cancelar: ${link}`,
+      solicitado: () => `Oi, ${nome}! Aqui é a Lucy. Recebi seu pedido para ${quandoTexto(a)} (${servicosTexto(a)}). Já já te confirmo!`,
+      recusado: () => `Oi, ${nome}! Aqui é a Lucy. Infelizmente não vou conseguir te atender ${quandoTexto(a)}. Pode escolher outro horário por aqui? ${marcar}`,
+      cancelado: () => `Oi, ${nome}! Aqui é a Lucy. Seu horário de ${quandoTexto(a)} foi cancelado. Quando quiser, é só marcar de novo: ${marcar}`,
+      concluido: () => `Oi, ${nome}! Obrigada pela visita 💜 Se puder, me conta como foi por aqui: ${link}`,
+      retorno: () => `Oi, ${nome}! Aqui é a Lucy 💜 Já está chegando a hora de refazer ${servicosTexto(a).toLowerCase()}. Quer marcar um horário? ${marcar}`,
+      pix: () => `Oi, ${nome}! Segue o Pix de ${fmt.reais(extra.valor ?? a.valor_total)} (${cfgPainel?.nome_salao ?? 'Lucy Cabeleireira'}). É só copiar e colar no app do banco:\n${extra.copia}`,
+      faltou: () => `Oi, ${nome}! Aqui é a Lucy. Senti sua falta no horário de ${quandoTexto(a)}. Está tudo bem? Se quiser, marcamos outro: ${marcar}`,
+      lembrete: () => `Oi, ${nome}! Aqui é a Lucy 💜 Passando para lembrar do seu horário amanhã, às ${fmt.hora(a.inicio)} (${servicosTexto(a)}).${endereco}\nSe precisar remarcar: ${link}`,
+      atraso: () => `Oi, ${nome}! Aqui é a Lucy. Vou me atrasar uns ${extra.minutos} minutinhos para o seu horário das ${fmt.hora(a.inicio)}. Me desculpe! 💜`,
+      folga: () => `Oi, ${nome}! Aqui é a Lucy. Não vou poder atender no dia ${fmt.dataLonga(a.inicio)}${extra.motivo ? ` (${extra.motivo})` : ''}. Me desculpe! Vamos remarcar seu horário? ${link}`,
+      especial: () => `Oi, ${nome}! Aqui é a Lucy. No dia ${fmt.dataLonga(a.inicio)} vou atender das ${extra.abre} às ${extra.fecha}${extra.motivo ? ` (${extra.motivo})` : ''}. Seu horário é às ${fmt.hora(a.inicio)}. Se precisar remarcar: ${link}`,
+    }[tipo]?.();
   }
   const linkZapCliente = (a, tipo, extra) => a.cliente?.whatsapp ? zapCom(a.cliente.whatsapp, mensagemParaCliente(a, tipo, extra)) : null;
 
@@ -1055,7 +1362,7 @@
       } else {
         const tipo = { numero: 'number', data: 'date', hora: 'time', tel: 'tel', email: 'email' }[c.tipo] ?? 'text';
         if (c.tipo === 'hora') v = String(v).slice(0, 5);
-        if (c.tipo === 'tel' && v) v = zapBonito(v);  // 5511987654321 → (11) 98765-4321
+        if (c.tipo === 'tel' && v) v = zapBonito(v);  // 5511900000000 → (11) 90000-0000
         if (c.tipo === 'dinheiro' && v !== '') v = Number(v).toFixed(2).replace('.', ',');
         const extra = c.tipo === 'dinheiro' ? 'inputmode="decimal" placeholder="0,00"'
           : c.tipo === 'numero' ? `inputmode="numeric" min="${c.min ?? 0}" ${c.maxNum ? `max="${c.maxNum}"` : ''}`
@@ -1182,7 +1489,7 @@
     const $c = document.getElementById('conteudo');
     if (!cfgPainel) cfgPainel = await painelApi('/configuracoes').catch(() => null);
     const telas = {
-      pedidos: abaPedidos, agenda: abaAgenda, clientes: abaClientes, servicos: abaServicos,
+      pedidos: abaPedidos, agenda: abaAgenda, retornos: abaRetornos, clientes: abaClientes, servicos: abaServicos,
       horarios: abaHorarios, promocoes: abaPromocoes, salao: abaSalao, avaliacoes: abaAvaliacoes,
     };
     try {
@@ -1215,6 +1522,13 @@
           ${a.origem === 'cliente' ? ' · pedido pelo site' : ''}</p>
         ${alerta}
         ${a.observacao_cliente ? `<p class="suave" style="white-space:pre-line;margin:.5rem 0 0">Recado: ${esc(a.observacao_cliente)}</p>` : ''}
+        ${comAcoes && ['agendado', 'concluido'].includes(a.status) ? (a.pago
+          ? `<p class="pago">✔ Pago${a.forma_pagamento ? ` · ${esc(FORMAS_TXT[a.forma_pagamento])}` : ''}
+              <button class="secundario pequeno" data-acao="desfazer-pagamento">Desfazer</button></p>`
+          : `<div class="linha-pagamento"><span class="suave">Pagamento${a.forma_pagamento ? ` (prefere ${esc(FORMAS_TXT[a.forma_pagamento])})` : ''}:</span>
+              <button class="secundario pequeno" data-acao="pix">Pix (QR code)</button>
+              <button class="secundario pequeno" data-acao="pago-cartao">Pago no cartão</button>
+              <button class="secundario pequeno" data-acao="pago-dinheiro">Pago em dinheiro</button></div>`) : ''}
         ${comAcoes ? `<div class="acoes-item">
           ${botoes.map(([acao, rotulo, classe]) => `<button class="pequeno ${classe}" data-acao="${acao}">${rotulo}</button>`).join('')}
           ${linkZapCliente(a, a.status) ? `<a class="botao secundario pequeno" href="${esc(linkZapCliente(a, a.status))}" target="_blank" rel="noopener"
@@ -1245,6 +1559,14 @@
               <div class="lista-links">${[10, 15, 20, 30, 45].map((m) => `<a class="botao secundario" target="_blank" rel="noopener"
                 href="${esc(linkZapCliente(a, 'atraso', { minutos: m }))}">${m} minutos</a>`).join('')}</div>`);
           }
+          if (acao === 'pix') return mostrarPixNoPainel(a, depois);
+          if (acao === 'pago-cartao' || acao === 'pago-dinheiro') return registrarPagamento(a, acao.slice(5), depois, b);
+          if (acao === 'desfazer-pagamento') {
+            if (!await perguntar(`Desfazer o pagamento de <strong>${esc(a.cliente?.nome)}</strong>?`, { sim: 'Sim, desfazer' })) return;
+            await painelApi(`/agendamentos/${a.id}/pagamento`, { metodo: 'POST', corpo: { pago: false } });
+            avisar('Pagamento desfeito.');
+            return depois();
+          }
           if (acao === 'excluir') {
             if (!await perguntar(`Excluir de vez o horário de <strong>${esc(a.cliente?.nome)}</strong>?
               <br><span class="suave">Dica: para manter o histórico, prefira "Cancelar".</span>`)) return;
@@ -1260,8 +1582,11 @@
             const r = await painelApi(`/agendamentos/${a.id}/${acao}`, { metodo: 'POST' });
             // Depois da ação: botão para avisar a cliente pelo WhatsApp (mensagem pronta)
             const zap = linkZapCliente(r, r.status);
-            const extra = (zap && ['confirmar', 'recusar', 'cancelar'].includes(acao)
-              ? `<a class="botao pequeno" style="margin-top:.6rem;display:flex" href="${esc(zap)}" target="_blank" rel="noopener">${ICONE_ZAP} Avisar ${esc(r.cliente?.nome?.split(' ')[0])} no WhatsApp</a>` : '');
+            let extra = (zap && ['confirmar', 'recusar', 'cancelar', 'concluir'].includes(acao)
+              ? `<a class="botao pequeno" style="margin-top:.6rem;display:flex" href="${esc(zap)}" target="_blank" rel="noopener">${ICONE_ZAP} ${acao === 'concluir'
+                ? `Agradecer ${esc(r.cliente?.nome?.split(' ')[0])} e pedir avaliação` : `Avisar ${esc(r.cliente?.nome?.split(' ')[0])} no WhatsApp`}</a>` : '');
+            // Retorno: oferecer ao finalizar (ou só depois do pagamento, conforme a aba Salão)
+            if (acao === 'concluir' && (cfgPainel?.retorno_momento !== 'apos_pagamento' || r.pago)) extra += await botaoRetorno(r);
             avisar({ confirmar: 'Horário confirmado!', recusar: 'Pedido recusado.', cancelar: 'Horário cancelado.',
               concluir: 'Atendimento concluído.', faltou: 'Marcado como falta.' }[acao], 'sucesso', extra);
             depois();
@@ -1271,18 +1596,63 @@
     });
   }
 
+  // Botão "Agendar retorno" (abre o formulário já com a cliente, os serviços e o dia sugerido)
+  let servicosCache = null;
+  async function botaoRetorno(a) {
+    servicosCache ??= await painelApi('/servicos').catch(() => []);
+    const dias = a.servicos.map((x) => servicosCache.find((s) => s.id === x.servico_id)?.retorno_dias).filter(Boolean);
+    const dia = somarDias(hojeNoSalao(), dias.length ? Math.min(...dias) : 30);
+    const q = new URLSearchParams({ dia, cliente: a.cliente?.id ?? '', servicos: a.servicos.map((x) => x.servico_id).filter(Boolean).join(','), retorno_de: a.id });
+    return `<a class="botao secundario pequeno" style="margin-top:.5rem;display:flex" href="#/painel/agenda/novo?${q}">
+      Agendar retorno de ${esc(a.cliente?.nome?.split(' ')[0])} (sugestão: ${esc(fmt.partesDoDia(dia).longa)})</a>`;
+  }
+
+  // Registra o pagamento; se a Lucy escolheu "oferecer retorno depois do pagamento", oferece aqui.
+  async function registrarPagamento(a, forma, depois, botao) {
+    if (botao) botao.disabled = true;
+    try {
+      const r = await painelApi(`/agendamentos/${a.id}/pagamento`, { metodo: 'POST', corpo: { forma, pago: true } });
+      const extra = r.status === 'concluido' && cfgPainel?.retorno_momento === 'apos_pagamento' ? await botaoRetorno(r) : '';
+      avisar(`Pagamento registrado (${FORMAS_TXT[forma]}).`, 'sucesso', extra);
+      depois();
+    } catch (e) { if (botao) botao.disabled = false; if (e.status === 401) throw e; avisar(e.message, 'erro'); }
+  }
+
+  // Mostra o QR code do Pix para a cliente escanear ali mesmo (ou mandar pelo WhatsApp)
+  async function mostrarPixNoPainel(a, depois) {
+    let pix;
+    try { pix = await painelApi(`/agendamentos/${a.id}/pix`); } catch (e) {
+      if (e.status === 401) throw e;
+      return avisar(e.message, 'erro', ' <a href="#/painel/salao">Cadastrar a chave Pix</a>');
+    }
+    const zap = linkZapCliente(a, 'pix', { valor: pix.valor, copia: pix.copia_e_cola });
+    const $j = janela(`Pix de ${esc(a.cliente?.nome)}`, `
+      <div class="qr-pix">${QR.svg(pix.copia_e_cola, 'QR code do Pix')}</div>
+      <p style="text-align:center;margin:.25rem 0 1rem"><strong>${fmt.reais(pix.valor)}</strong></p>
+      <p class="suave">A cliente aponta a câmera do app do banco para o QR code. Ou mande o "copia e cola":</p>
+      <textarea class="copia-cola" readonly aria-label="Pix copia e cola">${esc(pix.copia_e_cola)}</textarea>
+      <div class="lista-links">
+        <button class="secundario" data-copiar-pix>Copiar código Pix</button>
+        ${zap ? `<a class="botao secundario" target="_blank" rel="noopener" href="${esc(zap)}">${ICONE_ZAP} Mandar o Pix pelo WhatsApp</a>` : ''}
+        <button data-recebi>Já recebi o Pix (confirmar pagamento)</button>
+      </div>
+      <p class="suave" style="margin-top:0">Confira no app do seu banco se o Pix entrou antes de confirmar.</p>`);
+    $j.querySelector('[data-copiar-pix]').onclick = async (e) => { e.target.textContent = await copiarTexto(pix.copia_e_cola) ? 'Copiado!' : 'Selecione e copie'; };
+    $j.querySelector('[data-recebi]').onclick = async () => { $j.remove(); await registrarPagamento(a, 'pix', depois); };
+  }
+
   // Formulário de agendamento: serve para MARCAR (novo) e para EDITAR.
   async function formularioAgendamento($onde, a, depois, padroes = {}) {
     const [servicos, clientes] = await Promise.all([
       painelApi('/servicos'),
       a ? Promise.resolve([]) : painelApi('/clientes'),
     ]);
-    const escolhidos = new Set(a ? a.servicos.map((s) => s.servico_id) : []);
+    const escolhidos = new Set(a ? a.servicos.map((s) => s.servico_id) : (padroes.servicos ?? []));
     const visiveis = servicos.filter((s) => s.ativo || escolhidos.has(s.id));
     const data = a ? dataNoFuso(a.inicio) : (padroes.dia ?? hojeNoSalao());
     $onde.innerHTML = `
       <form class="cartao form-cartao" novalidate>
-        <h2>${a ? 'Editar horário' : 'Marcar horário'}</h2>
+        <h2>${a ? 'Editar horário' : padroes.retorno_de ? 'Agendar retorno' : 'Marcar horário'}</h2>
         ${a ? `<p><strong>${esc(a.cliente?.nome)}</strong></p>` : `
           <label for="ag-cliente">Cliente</label>
           <select id="ag-cliente" name="cliente">
@@ -1335,6 +1705,7 @@
         if (!dia || !ini) throw new ErroApi('Informe o dia e a hora de início.', 400);
         const corpo = {
           servicos: servs, inicio: instanteDe(dia, ini), fim: fim ? instanteDe(dia, fim) : null,
+          retorno_de: a ? undefined : padroes.retorno_de ?? null,
           observacao: form.elements.observacao.value.trim(),
         };
         if (a) {
@@ -1424,7 +1795,41 @@
     const recarregar = (d = dia) => (d === dia ? telaPainel('agenda', new URLSearchParams({ dia })) : irPara(d));
     document.getElementById('marcar').onclick = () => formularioAgendamento(document.getElementById('form-novo'), null, recarregar, { dia });
     ligarAgendamentos($c, lista, recarregar);
-    if (resto[0] === 'novo') formularioAgendamento(document.getElementById('form-novo'), null, recarregar, { dia, cliente: params.get('cliente') });
+    if (resto[0] === 'novo') formularioAgendamento(document.getElementById('form-novo'), null, recarregar, {
+      dia, cliente: params.get('cliente'), retorno_de: params.get('retorno_de'),
+      servicos: (params.get('servicos') ?? '').split(',').filter(Boolean),
+    });
+  }
+
+  // --- ABA: RETORNOS (só a Lucy vê; avisar a cliente é opcional)
+  async function abaRetornos($c) {
+    const lista = await painelApi('/retornos');
+    const hoje = hojeNoSalao();
+    $c.innerHTML = `
+      <h2>Retornos</h2>
+      <p class="suave">Clientes que costumam voltar nesta época (até 14 dias) e ainda não têm horário marcado.
+        Só você vê esta lista. Avisar a cliente é opcional.</p>
+      ${lista.length ? lista.map((r) => {
+        const pseudo = { cliente: r.cliente, servicos: r.servicos.map((nome) => ({ nome })) };
+        const zap = linkZapCliente(pseudo, 'retorno');
+        const q = new URLSearchParams({ dia: r.retorno_previsto > hoje ? r.retorno_previsto : hoje, cliente: r.cliente.id, servicos: r.servico_ids.join(','), retorno_de: r.agendamento_id });
+        const quando = r.faltam_dias < 0 ? `atrasado ${-r.faltam_dias} dia${r.faltam_dias === -1 ? '' : 's'}`
+          : r.faltam_dias === 0 ? 'é hoje' : `em ${r.faltam_dias} dia${r.faltam_dias === 1 ? '' : 's'}`;
+        return `
+          <div class="cartao item">
+            <div class="linha-titulo">
+              <p class="quando" style="margin:0"><a href="#/painel/clientes/${esc(r.cliente.id)}">${esc(r.cliente.nome)}</a></p>
+              <span class="selo ${r.faltam_dias < 0 ? 'atrasado' : 'solicitado'}">${quando}</span>
+            </div>
+            <p class="suave" style="margin:.35rem 0 0">Último atendimento: ${esc(fmt.dataLonga(r.ultimo_atendimento))} · ${esc(r.servicos.join(' + '))}</p>
+            <p class="suave" style="margin:0">Retorno previsto: ${esc(fmt.partesDoDia(r.retorno_previsto).longa)}</p>
+            <div class="acoes-item">
+              <a class="botao pequeno" href="#/painel/agenda/novo?${q}">Marcar horário</a>
+              ${zap ? `<a class="botao secundario pequeno" target="_blank" rel="noopener" href="${esc(zap)}">${ICONE_ZAP} Lembrar no WhatsApp</a>` : ''}
+            </div>
+          </div>`;
+      }).join('') : '<p class="cartao suave">Nenhum retorno chegando nos próximos 14 dias.</p>'}
+      <p class="suave">O tempo de retorno de cada serviço se ajusta na aba <a href="#/painel/servicos">Serviços</a>.</p>`;
   }
 
   // --- ABA: CLIENTES (lista + ficha)
@@ -1716,7 +2121,7 @@
       { nome: 'email_lucy', rotulo: 'E-mail', tipo: 'email', max: 120 },
     ]],
     ['Pix', [
-      { nome: 'chave_pix', rotulo: 'Chave Pix', max: 120 },
+      { nome: 'chave_pix', rotulo: 'Chave Pix', max: 120, dica: 'E-mail, celular com +55 (ex.: +5511900000000), CPF/CNPJ só com números ou chave aleatória.' },
       { nome: 'nome_recebedor_pix', rotulo: 'Nome no Pix', max: 25, dica: 'Até 25 letras, sem acento.' },
       { nome: 'cidade_pix', rotulo: 'Cidade no Pix', max: 15, dica: 'Até 15 letras, sem acento.' },
     ]],

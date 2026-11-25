@@ -24,7 +24,7 @@
 -- ---------------------------------------------------------------------
 create table if not exists configuracoes (
   id                      smallint primary key default 1 check (id = 1),
-  nome_salao              text not null default 'Lucy cabeleireira',
+  nome_salao              text not null default 'Lucy Cabeleireira',
   endereco                text,
   whatsapp_lucy           text,   -- só números, com 55 + DDD: 5511999998888
   email_lucy              text,
