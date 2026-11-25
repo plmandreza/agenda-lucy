@@ -22,3 +22,7 @@ alter table configuracoes
 alter table agendamentos drop constraint if exists sem_horario_duplo;
 
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.
+
+-- Ajuste (25/11/2026): a lavagem está incluída no valor de TODOS os serviços
+-- (o site já avisa isso); tira o "Com lavagem grátis" da descrição dos cortes.
+update servicos set descricao = null where descricao = 'Com lavagem grátis';

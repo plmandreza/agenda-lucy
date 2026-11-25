@@ -64,8 +64,8 @@ create table if not exists servicos (
 -- Durações segundo a Lucy: "1h pelo menos, alguns até 3h".
 -- Preços começam em 0 até a Lucy preencher no painel.
 insert into servicos (nome, descricao, duracao_min, ordem) values
-  ('Corte feminino',                  'Com lavagem grátis', 60,  1),
-  ('Corte masculino',                 'Com lavagem grátis', 60,  2),
+  ('Corte feminino',                  null                , 60,  1),
+  ('Corte masculino',                 null                , 60,  2),
   ('Tintura',                         null,                 180, 3),
   ('Sobrancelha (design e tintura)',  null,                 60,  4),
   ('Escova simples',                  null,                 60,  5),

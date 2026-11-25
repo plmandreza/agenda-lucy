@@ -12,7 +12,7 @@
 
     Endereços (o que vem depois do #):
       /                    → início: serviços, funcionamento e contato
-      /#/agendar           → pedir um horário (4 passos)
+      /#/agendar           → agendar horário (4 passos)
       /#/agendar?remarcar= → remarcar um pedido existente
       /#/pedido/<código>   → o pedido da cliente (link pessoal)
       /#/meus-pedidos      → pedidos guardados neste aparelho
@@ -761,7 +761,7 @@
       <section class="cartao destaque">
         <h1>Que bom ter você aqui!</h1>
         <p>Escolha os serviços, veja os horários livres e faça o seu pedido. A Lucy confirma pra você.</p>
-        <a class="botao botao-largo" href="#/agendar">Pedir um horário</a>
+        <a class="botao botao-largo" href="#/agendar">Agendar horário</a>
         ${catalogos ? `<a class="link-catalogos" href="#catalogos" data-rolar="catalogos">Ver ${d.catalogos.length > 1 ? 'os catálogos' : 'o catálogo'}
           ${esc(d.catalogos.map((c) => c.marca).join(', ').replace(/, ([^,]*)$/, ' e $1'))} ↓</a>` : ''}
       </section>
@@ -769,6 +769,7 @@
       ${d.remy ? '<section class="cartao" id="remy" aria-labelledby="t-remy"></section>' : ''}
       <section class="cartao" aria-labelledby="t-servicos">
         <h2 id="t-servicos">Serviços</h2>
+        <p class="suave">A lavagem já está incluída no valor de todos os serviços.</p>
         <ul class="servicos">
           ${d.servicos.map((s) => `
             <li>
@@ -795,7 +796,7 @@
       if (longe) {
         $r.innerHTML = `
           <h2 id="t-remy">Sobre o gato do salão</h2>
-          <p>Combinado: quando você pedir um horário, a Lucy vai saber que o gato deve ficar longe durante o seu atendimento.</p>
+          <p>Combinado: quando você agendar um horário, a Lucy vai saber que o gato deve ficar longe durante o seu atendimento.</p>
           <button class="secundario pequeno" id="remy-volta">Mudei de ideia</button>`;
         document.getElementById('remy-volta').onclick = () => { semRemy.apagar(); desenharRemy(); };
         return;
@@ -1112,7 +1113,7 @@
         <p class="suave">Às ${esc(fmt.hora(ag.inicio))}</p>
         <ul class="itens">
           ${e.lista.map((s) => `<li><span>${esc(s.nome)}</span><span>${fmt.reais(s.preco)}</span></li>`).join('')}
-          <li class="total"><span>Total</span><span>${fmt.reais(e.total)}</span></li>
+          <li class="total"><span>Total <span class="suave" style="font-weight:400">(lavagem inclusa)</span></span><span>${fmt.reais(e.total)}</span></li>
         </ul>
         ${ag.remarcar ? '' : `
           <p class="suave" style="margin-top:1rem">${esc(ag.nome)} · ${esc(ag.whatsapp)}${ag.email ? ' · ' + esc(ag.email) : ''}</p>
@@ -1413,7 +1414,7 @@
     if (!tokens.length) {
       $app.innerHTML = `<button class="voltar" data-voltar="#/">← Voltar</button><div class="cartao"><h1>Meu horário</h1>
         <p>Nenhum pedido guardado neste aparelho.</p>
-        <a class="botao botao-largo" href="#/agendar">Pedir um horário</a></div>`;
+        <a class="botao botao-largo" href="#/agendar">Agendar horário</a></div>`;
       return;
     }
     $app.innerHTML = `<p class="carregando">Carregando…</p>`;
@@ -2302,7 +2303,7 @@
       intro: '<p class="suave">Serviço já usado em atendimentos não é apagado: ele é desativado, para não estragar o histórico.</p>',
       campos: [
         { nome: 'nome', rotulo: 'Nome', obrigatorio: true, max: 80 },
-        { nome: 'descricao', rotulo: 'Descrição', max: 200, dica: 'Ex.: Com lavagem grátis' },
+        { nome: 'descricao', rotulo: 'Descrição', max: 200, dica: 'Ex.: Para cabelos curtos e médios' },
         { nome: 'duracao_min', rotulo: 'Duração (minutos)', tipo: 'numero', obrigatorio: true, min: 5, maxNum: 600,
           dica: 'Só você vê. Serve para o sistema avisar quando dois horários se cruzam.' },
         { nome: 'preco', rotulo: 'Preço (R$)', tipo: 'dinheiro', obrigatorio: true },
