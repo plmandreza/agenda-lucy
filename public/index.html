@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lucy cabeleireira</title>
+  <meta name="description" content="Salão Lucy cabeleireira: agende seu horário.">
+  <meta name="theme-color" content="#7a3b5c">
+  <!--
+    LUCY CABELEIREIRA — página única (HTML + estilo + programação juntos)
+    Etapa 2: confere se o sistema está no ar e testa o login da Lucy.
+
+    Endereços:
+      /           → página da cliente (por enquanto, "em breve")
+      /#/painel   → área da Lucy (login)
+  -->
+  <style>
+    :root {
+      --vinho: #7a3b5c;
+      --vinho-escuro: #5c2a44;
+      --rosa-claro: #fbf1f5;
+      --creme: #fffaf6;
+      --texto: #2b2026;
+      --texto-suave: #6b5a63;
+      --verde: #2e7d4f;
+      --vermelho: #b3261e;
+      --borda: #ead7e0;
+      --raio: 14px;
+    }
+    * { box-sizing: border-box; }
+    html { font-size: 18px; }  /* letra grande, fácil de ler no celular */
+    body {
+      margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--creme); color: var(--texto); line-height: 1.5;
+    }
+    .topo { background: var(--vinho); color: #fff; padding: 1rem 1.25rem; }
+    .marca { color: #fff; text-decoration: none; font-size: 1.4rem; font-weight: 700; letter-spacing: .3px; }
+    .marca span { font-weight: 400; opacity: .9; }
+    main { flex: 1; width: 100%; max-width: 34rem; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+    main:focus { outline: none; }
+    h1 { font-size: 1.5rem; margin: 0 0 .5rem; color: var(--vinho-escuro); }
+    p { margin: .4rem 0 1rem; }
+    .cartao {
+      background: #fff; border: 1px solid var(--borda); border-radius: var(--raio);
+      padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: 0 2px 10px rgba(122, 59, 92, .06);
+    }
+    .suave { color: var(--texto-suave); font-size: .9rem; }
+    label { display: block; font-weight: 600; margin: 1rem 0 .35rem; }
+    input {
+      width: 100%; font: inherit; padding: .8rem .9rem; border-radius: 10px;
+      border: 1.5px solid var(--borda); background: #fff; color: var(--texto);
+    }
+    input:focus { border-color: var(--vinho); outline: 3px solid rgba(122, 59, 92, .18); }
+    .linha-senha { display: flex; gap: .5rem; }
+    .linha-senha input { flex: 1; }
+    button {
+      font: inherit; font-weight: 600; cursor: pointer; border-radius: 10px;
+      padding: .8rem 1.2rem; min-height: 3rem; border: 1.5px solid var(--vinho);
+      background: var(--vinho); color: #fff;
+    }
+    button:hover { background: var(--vinho-escuro); }
+    button:focus-visible, a:focus-visible { outline: 3px solid #e3a6c2; outline-offset: 2px; }
+    button:disabled { opacity: .6; cursor: wait; }
+    button.secundario { background: #fff; color: var(--vinho); }
+    button.secundario:hover { background: var(--rosa-claro); }
+    .botao-largo { width: 100%; margin-top: 1.25rem; }
+    .status { list-style: none; padding: 0; margin: 0; }
+    .status li { display: flex; gap: .6rem; align-items: center; padding: .35rem 0; }
+    .ok { color: var(--verde); font-weight: 700; }
+    .falha { color: var(--vermelho); font-weight: 700; }
+    .mensagem { margin-top: 1rem; padding: .75rem .9rem; border-radius: 10px; }
+    .mensagem.erro { background: #fdecea; color: var(--vermelho); }
+    .mensagem:empty { display: none; }
+    footer { text-align: center; padding: 1rem; font-size: .85rem; color: var(--texto-suave); }
+    footer a { color: var(--vinho); }
+    /* Texto só para leitores de tela (acessibilidade) */
+    .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  </style>
+</head>
+<body>
+  <header class="topo">
+    <a href="#/" class="marca">Lucy <span>Cabeleireira</span></a>
+  </header>
+
+  <main id="app" tabindex="-1" aria-live="polite"></main>
+
+  <footer>
+    <a href="#/painel">Área da Lucy</a>
+  </footer>
+
+  <script>
+  // ===================================================================
+  // 1. ENDEREÇO DO SERVIDOR
+  //    Vazio = o mesmo site. (Na versão React, vira o link do servidor.)
+  // ===================================================================
+  const API = '';
+
+
+  // ===================================================================
+  // 2. PEQUENAS FERRAMENTAS
+  // ===================================================================
+  const $app = document.getElementById('app');
+
+  // Evita que algum texto vindo de fora vire código na página.
+  function esc(texto) {
+    return String(texto ?? '').replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  }
+
+  // Guarda o "crachá" da Lucy no aparelho, para ela não ter que
+  // digitar a senha toda vez.
+  const sessao = {
+    CHAVE: 'lucy.sessao',
+    ler() { try { return JSON.parse(localStorage.getItem(this.CHAVE)); } catch { return null; } },
+    salvar(s) { try { localStorage.setItem(this.CHAVE, JSON.stringify(s)); } catch {} },
+    apagar() { try { localStorage.removeItem(this.CHAVE); } catch {} },
+  };
+
+  class ErroApi extends Error {
+    constructor(mensagem, status) { super(mensagem); this.status = status; }
+  }
+
+  // Conversa com o server.js. Se o crachá venceu, renova sozinho uma vez.
+  async function api(caminho, { metodo = 'GET', corpo, autenticado = false, renovado = false } = {}) {
+    const headers = {};
+    if (corpo !== undefined) headers['Content-Type'] = 'application/json';
+    if (autenticado) {
+      let s = sessao.ler();
+      if (s && !renovado && s.expires_at && s.expires_at * 1000 - Date.now() < 60_000) {
+        s = await renovarSessao();  // vai vencer em menos de 1 minuto
+      }
+      if (s) headers.Authorization = 'Bearer ' + s.access_token;
+    }
+    let resposta;
+    try {
+      resposta = await fetch(API + caminho, {
+        method: metodo, headers,
+        body: corpo !== undefined ? JSON.stringify(corpo) : undefined,
+      });
+    } catch {
+      throw new ErroApi('Sem conexão com o servidor. Confira a internet e tente de novo.', 0);
+    }
+    if (resposta.status === 401 && autenticado && !renovado && await renovarSessao()) {
+      return api(caminho, { metodo, corpo, autenticado, renovado: true });
+    }
+    const dados = await resposta.json().catch(() => ({}));
+    if (!resposta.ok) throw new ErroApi(dados.erro || 'Algo deu errado. Tente de novo.', resposta.status);
+    return dados;
+  }
+
+  async function renovarSessao() {
+    const s = sessao.ler();
+    if (!s?.refresh_token) return null;
+    try {
+      const nova = await api('/api/renovar', { metodo: 'POST', corpo: { refresh_token: s.refresh_token } });
+      sessao.salvar(nova);
+      return nova;
+    } catch {
+      sessao.apagar();
+      return null;
+    }
+  }
+
+
+  // ===================================================================
+  // 3. TELAS
+  // ===================================================================
+
+  // --- Página da cliente (por enquanto: "em breve" + teste do sistema)
+  async function telaInicio() {
+    $app.innerHTML = `
+      <div class="cartao">
+        <h1>Bem-vinda!</h1>
+        <p>Em breve você vai poder agendar seu horário com a Lucy por aqui.</p>
+      </div>
+      <div class="cartao">
+        <p class="suave" style="margin-top:0">Verificação do sistema</p>
+        <ul class="status" id="status">
+          <li>Verificando…</li>
+        </ul>
+      </div>`;
+    const $status = document.getElementById('status');
+    const linha = (ok, texto) =>
+      `<li><span class="${ok ? 'ok' : 'falha'}" aria-hidden="true">${ok ? '✓' : '✗'}</span>
+       <span><span class="sr">${ok ? 'Funcionando:' : 'Com problema:'}</span> ${esc(texto)}</span></li>`;
+    try {
+      const r = await api('/api/saude');
+      $status.innerHTML = linha(true, 'Servidor no ar') + linha(true, `Banco de dados conectado (${r.salao})`);
+    } catch (e) {
+      $status.innerHTML = e.status === 0
+        ? linha(false, e.message)
+        : linha(true, 'Servidor no ar') + linha(false, e.message);
+    }
+  }
+
+  // --- Área da Lucy
+  async function telaPainel() {
+    if (!sessao.ler()) return telaLogin();
+    $app.innerHTML = `<div class="cartao"><p>Conferindo seu acesso…</p></div>`;
+    try {
+      const eu = await api('/api/lucy/eu', { autenticado: true });
+      $app.innerHTML = `
+        <div class="cartao">
+          <h1>Olá, Lucy!</h1>
+          <p>O login está funcionando. Nas próximas etapas, sua agenda e suas clientes vão aparecer aqui.</p>
+          <p class="suave">Entrou como ${esc(eu.email)}</p>
+          <button class="secundario botao-largo" id="sair">Sair</button>
+        </div>`;
+      document.getElementById('sair').onclick = sair;
+    } catch (e) {
+      if (e.status === 401) { sessao.apagar(); return telaLogin('Sua sessão expirou. Entre de novo.'); }
+      $app.innerHTML = `<div class="cartao"><p class="mensagem erro">${esc(e.message)}</p>
+        <button class="botao-largo" onclick="mostrar()">Tentar de novo</button></div>`;
+    }
+  }
+
+  function telaLogin(aviso = '') {
+    $app.innerHTML = `
+      <form class="cartao" id="form-login" novalidate>
+        <h1>Área da Lucy</h1>
+        <p class="suave">Entre com seu e-mail e senha.</p>
+        <label for="email">E-mail</label>
+        <input id="email" type="email" autocomplete="username" inputmode="email" required>
+        <label for="senha">Senha</label>
+        <div class="linha-senha">
+          <input id="senha" type="password" autocomplete="current-password" required>
+          <button type="button" class="secundario" id="ver-senha" aria-pressed="false">Mostrar</button>
+        </div>
+        <button type="submit" class="botao-largo" id="entrar">Entrar</button>
+        <p class="mensagem erro" id="msg" role="alert">${esc(aviso)}</p>
+      </form>`;
+
+    const $senha = document.getElementById('senha');
+    const $ver = document.getElementById('ver-senha');
+    $ver.onclick = () => {
+      const mostrando = $senha.type === 'text';
+      $senha.type = mostrando ? 'password' : 'text';
+      $ver.textContent = mostrando ? 'Mostrar' : 'Esconder';
+      $ver.setAttribute('aria-pressed', String(!mostrando));
+    };
+
+    document.getElementById('form-login').onsubmit = async (ev) => {
+      ev.preventDefault();
+      const $msg = document.getElementById('msg');
+      const $entrar = document.getElementById('entrar');
+      const email = document.getElementById('email').value.trim();
+      const senha = $senha.value;
+      if (!email || !senha) { $msg.textContent = 'Preencha o e-mail e a senha.'; return; }
+      $entrar.disabled = true; $entrar.textContent = 'Entrando…'; $msg.textContent = '';
+      try {
+        const s = await api('/api/login', { metodo: 'POST', corpo: { email, senha } });
+        sessao.salvar(s);
+        telaPainel();
+      } catch (e) {
+        $msg.textContent = e.message;
+        $entrar.disabled = false; $entrar.textContent = 'Entrar';
+      }
+    };
+    document.getElementById('email').focus();
+  }
+
+  async function sair() {
+    try { await api('/api/sair', { metodo: 'POST', autenticado: true }); } catch {}
+    sessao.apagar();
+    telaLogin();
+  }
+
+
+  // ===================================================================
+  // 4. NAVEGAÇÃO: escolhe a tela pelo final do endereço (#/painel etc.)
+  // ===================================================================
+  function mostrar() {
+    const rota = location.hash.replace(/^#/, '') || '/';
+    if (rota.startsWith('/painel')) telaPainel();
+    else telaInicio();
+  }
+  window.addEventListener('hashchange', mostrar);
+  mostrar();
+  </script>
+</body>
+</html>

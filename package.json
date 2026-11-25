@@ -1,0 +1,15 @@
+{
+  "name": "agenda-lucy",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Sistema de agendamento do salão Lucy cabeleireira",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.58.0",
+    "express": "^5.1.0"
+  }
+}
