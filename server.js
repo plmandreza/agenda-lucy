@@ -458,7 +458,7 @@ app.post('/api/publico/pedidos', limitarPedidos, exigirConfiguracao, async (req,
   const observacao = texto(b.observacao, 500);
 
   if (nome.length < 2) throw new ErroPublico(400, 'Informe seu nome.');
-  if (!whatsapp) throw new ErroPublico(400, 'Informe um WhatsApp válido, com DDD. Ex.: (11) 98765-4321');
+  if (!whatsapp) throw new ErroPublico(400, 'Informe um WhatsApp válido, com DDD. Ex.: (00) 00000-0000');
   if (email && !emailValido(email)) throw new ErroPublico(400, 'Confira o e-mail digitado (ou deixe em branco).');
 
   const { lista, duracao, total } = await servicosEscolhidos(b.servicos);
