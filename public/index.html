@@ -187,6 +187,66 @@
     .carregando { color: var(--texto-suave); }
     footer { text-align: center; padding: 1rem; font-size: .85rem; color: var(--texto-suave); }
     footer a { color: var(--vinho); }
+    /* Botão "← Voltar" */
+    .voltar {
+      background: none; border: none; color: var(--vinho); padding: .4rem 0; min-height: 2.5rem;
+      font-weight: 600; margin-bottom: .5rem; cursor: pointer;
+    }
+    .voltar:hover { background: none; text-decoration: underline; }
+
+    /* Painel da Lucy */
+    body.largo main { max-width: 52rem; }
+    .painel-topo { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
+    .abas { display: flex; gap: .4rem; overflow-x: auto; padding: .5rem 0 1rem; margin-bottom: .25rem; }
+    .abas a {
+      flex: none; padding: .5rem .95rem; border-radius: 999px; border: 1.5px solid var(--borda);
+      background: #fff; color: var(--texto); text-decoration: none; font-weight: 600; font-size: .9rem;
+    }
+    .abas a:hover { border-color: var(--vinho); }
+    .abas a.ativa { background: var(--vinho); border-color: var(--vinho); color: #fff; }
+    .linha-titulo { display: flex; justify-content: space-between; align-items: center; gap: .75rem; flex-wrap: wrap; }
+    .linha-titulo h2 { margin: 0; }
+    .cartao > .linha-titulo:first-child .quando { margin: 0; }
+    #conteudo > .linha-titulo, .secao > .linha-titulo { margin: 1.25rem 0 .75rem; }
+    button.pequeno, .botao.pequeno { min-height: 2.4rem; padding: .4rem .85rem; font-size: .9rem; }
+    .acoes-item { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .85rem; }
+    .item .quando { font-size: 1.05rem; }
+    .form-cartao { border: 2px solid var(--vinho); }
+    .form-cartao h2 { margin-top: 0; }
+    select {
+      width: 100%; font: inherit; padding: .75rem .9rem; border-radius: 10px;
+      border: 1.5px solid var(--borda); background: #fff; color: var(--texto);
+    }
+    .opcional { font-weight: 400; color: var(--texto-suave); font-size: .85rem; }
+    .alerta-cliente { background: var(--amarelo-claro); color: var(--amarelo-texto); border-radius: 8px; padding: .4rem .7rem; margin: .5rem 0 0; font-size: .9rem; }
+    .resumo-hoje { display: flex; justify-content: space-between; gap: 1rem; text-decoration: none; color: inherit; flex-wrap: wrap; }
+    .navegar-dia { display: flex; gap: .5rem; align-items: center; margin-bottom: .5rem; }
+    .navegar-dia input { flex: 1; min-width: 0; }
+    .lista-simples { margin-top: .75rem; }
+    .item-link { display: flex; justify-content: space-between; gap: 1rem; text-decoration: none; color: inherit; padding: .9rem 1.1rem; margin-bottom: .6rem; }
+    .item-link:hover { border-color: var(--vinho); }
+    .tres-colunas { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: .6rem; }
+    .quatro-colunas { display: grid; grid-template-columns: repeat(4, 1fr); gap: .5rem; }
+    .quatro-colunas label { font-weight: 400; font-size: .85rem; margin: 0; color: var(--texto-suave); }
+    .quatro-colunas input { padding: .55rem .5rem; margin-top: .2rem; }
+    .dia-semana { border: 1px solid var(--borda); border-radius: 12px; padding: .5rem .9rem .9rem; margin: 0 0 .6rem; }
+    .dia-semana.fechado { background: #faf6f8; }
+    .dia-semana legend { padding: 0 .3rem; }
+    .opcao-inline { display: flex; align-items: center; gap: .5rem; margin: 0; font-weight: 700; }
+    .opcao-inline input { width: 1.25rem; height: 1.25rem; accent-color: var(--vinho); }
+    .agendamento.cancelado, .agendamento.recusado, .agendamento.faltou { opacity: .7; }
+    .estrelas { color: #c98a00; font-size: 1.3rem; letter-spacing: 2px; margin: 0; }
+    .fundo-dialogo {
+      position: fixed; inset: 0; background: rgba(43, 32, 38, .45); display: grid; place-items: center; padding: 1rem; z-index: 50;
+    }
+    .dialogo { background: #fff; border-radius: var(--raio); padding: 1.25rem; max-width: 26rem; width: 100%; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
+    .dialogo p { margin-top: 0; }
+    @media (max-width: 560px) {
+      .tres-colunas { grid-template-columns: 1fr 1fr; }
+      .tres-colunas > div:first-child { grid-column: 1 / -1; }
+      .quatro-colunas { grid-template-columns: 1fr 1fr; }
+    }
+
     /* Texto só para leitores de tela (acessibilidade) */
     .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   </style>
@@ -199,7 +259,7 @@
 
   <main id="app" tabindex="-1" aria-live="polite"></main>
 
-  <footer>
+  <footer id="rodape">
     <a href="#/painel">Área da Lucy</a>
   </footer>
 
@@ -728,6 +788,7 @@
         : params.get('cancelado') ? '<p class="mensagem sucesso" role="status">Pedido cancelado.</p>' : '';
 
     $app.innerHTML = `
+      <button class="voltar" data-voltar="#/">← Voltar</button>
       ${aviso}
       <div class="cartao">
         <span class="selo ${esc(p.status)}">${esc(p.status_texto)}</span>
@@ -795,7 +856,7 @@
   async function telaMeusPedidos() {
     const tokens = meusPedidos.listar();
     if (!tokens.length) {
-      $app.innerHTML = `<div class="cartao"><h1>Meu horário</h1>
+      $app.innerHTML = `<button class="voltar" data-voltar="#/">← Voltar</button><div class="cartao"><h1>Meu horário</h1>
         <p>Nenhum pedido guardado neste aparelho.</p>
         <a class="botao botao-largo" href="#/agendar">Pedir um horário</a></div>`;
       return;
@@ -806,6 +867,7 @@
     const pedidos = resultados.filter(Boolean).sort((a, b) => Date.parse(b.inicio) - Date.parse(a.inicio));
     atualizarNav();
     $app.innerHTML = `
+      <button class="voltar" data-voltar="#/">← Voltar</button>
       <h1>Meu horário</h1>
       ${pedidos.map((p) => `
         <a class="cartao" href="#/pedido/${esc(p.token)}" style="display:block;text-decoration:none;color:inherit">
@@ -818,29 +880,730 @@
 
 
   // ===================================================================
-  // 4. ÁREA DA LUCY
+  // 4. ÁREA DA LUCY (painel) — criar, ver, editar e excluir
   // ===================================================================
-  async function telaPainel() {
-    if (!sessao.ler()) return telaLogin();
-    $app.innerHTML = `<div class="cartao"><p>Conferindo seu acesso…</p></div>`;
-    try {
-      const eu = await api('/api/lucy/eu', { autenticado: true });
-      $app.innerHTML = `
-        <div class="cartao">
-          <h1>Olá, Lucy!</h1>
-          <p>O login está funcionando. Na próxima etapa, seus pedidos, sua agenda e suas clientes vão aparecer aqui.</p>
-          <p class="suave">Entrou como ${esc(eu.email)}</p>
-          <button class="secundario botao-largo" id="sair">Sair</button>
-        </div>`;
-      document.getElementById('sair').onclick = sair;
-    } catch (e) {
-      if (e.status === 401) { sessao.apagar(); return telaLogin('Sua sessão expirou. Entre de novo.'); }
-      telaErro(e.message);
+  const ABAS = [
+    ['pedidos', 'Pedidos'], ['agenda', 'Agenda'], ['clientes', 'Clientes'], ['servicos', 'Serviços'],
+    ['horarios', 'Horários'], ['promocoes', 'Promoções'], ['salao', 'Salão'], ['avaliacoes', 'Avaliações'],
+  ];
+  const painelApi = (caminho, opcoes = {}) => api('/api/lucy' + caminho, { ...opcoes, autenticado: true });
+  const hojeNoSalao = () => dataNoFuso(new Date());
+  const instanteDe = (data, hora) => new Date(`${data}T${hora}:00-03:00`).toISOString();
+  const linkZap = (numero) => `https://wa.me/${encodeURIComponent(numero)}`;
+  const zapBonito = (n) => { const m = String(n).match(/^55(\d{2})(\d{4,5})(\d{4})$/); return m ? `(${m[1]}) ${m[2]}-${m[3]}` : n; };
+
+  // Mensagem rápida no topo do painel (some sozinha).
+  // Fica guardada por alguns segundos, para sobreviver quando a tela é redesenhada.
+  let ultimoAviso = null;
+  function avisar(mensagem, tipo = 'sucesso') {
+    ultimoAviso = { mensagem, tipo, ate: Date.now() + 6000 };
+    mostrarAviso();
+  }
+  function mostrarAviso() {
+    const $a = document.getElementById('aviso');
+    if (!$a || !ultimoAviso || Date.now() > ultimoAviso.ate) return;
+    $a.innerHTML = `<p class="mensagem ${ultimoAviso.tipo}">${esc(ultimoAviso.mensagem)}</p>`;
+    $a.scrollIntoView({ block: 'nearest' });
+    clearTimeout(avisar.t);
+    avisar.t = setTimeout(() => { $a.innerHTML = ''; ultimoAviso = null; }, ultimoAviso.ate - Date.now());
+  }
+
+  // Pergunta "Tem certeza?" numa janelinha da própria página. Devolve true ou false.
+  function perguntar(textoHtml, { sim = 'Sim, excluir', nao = 'Não' } = {}) {
+    return new Promise((resolver) => {
+      const fundo = document.createElement('div');
+      fundo.className = 'fundo-dialogo';
+      fundo.innerHTML = `<div class="dialogo" role="alertdialog" aria-modal="true" aria-labelledby="dlg-t">
+        <p id="dlg-t">${textoHtml}</p>
+        <div class="acoes"><button class="secundario" data-r="0">${esc(nao)}</button>
+        <button class="perigo-cheio" data-r="1">${esc(sim)}</button></div></div>`;
+      document.body.appendChild(fundo);
+      const anterior = document.activeElement;
+      const fechar = (r) => { fundo.remove(); anterior?.focus?.(); resolver(r); };
+      fundo.querySelectorAll('button').forEach((b) => { b.onclick = () => fechar(b.dataset.r === '1'); });
+      fundo.addEventListener('keydown', (e) => { if (e.key === 'Escape') fechar(false); });
+      fundo.querySelector('[data-r="0"]').focus();
+    });
+  }
+
+  // --- Formulários genéricos: desenha os campos e lê o que foi digitado.
+  function htmlCampos(campos, valores = {}, prefixo = 'f') {
+    return campos.map((c) => {
+      const id = `${prefixo}-${c.nome}`;
+      let v = valores[c.nome] ?? c.padrao ?? '';
+      const dica = c.dica ? `<span class="dica">${c.dica}</span>` : '';
+      if (c.tipo === 'check') {
+        return `<label class="opcao"><input type="checkbox" id="${id}" name="${c.nome}" ${v ? 'checked' : ''}>
+          <span class="info">${esc(c.rotulo)}${dica}</span></label>`;
+      }
+      let campo;
+      if (c.tipo === 'area') {
+        campo = `<textarea id="${id}" name="${c.nome}" maxlength="${c.max ?? 500}">${esc(v)}</textarea>`;
+      } else if (c.tipo === 'select') {
+        campo = `<select id="${id}" name="${c.nome}">${c.opcoes.map(([ov, ot]) =>
+          `<option value="${esc(ov)}" ${String(ov) === String(v) ? 'selected' : ''}>${esc(ot)}</option>`).join('')}</select>`;
+      } else {
+        const tipo = { numero: 'number', data: 'date', hora: 'time', tel: 'tel', email: 'email' }[c.tipo] ?? 'text';
+        if (c.tipo === 'hora') v = String(v).slice(0, 5);
+        if (c.tipo === 'dinheiro' && v !== '') v = Number(v).toFixed(2).replace('.', ',');
+        const extra = c.tipo === 'dinheiro' ? 'inputmode="decimal" placeholder="0,00"'
+          : c.tipo === 'numero' ? `inputmode="numeric" min="${c.min ?? 0}" ${c.maxNum ? `max="${c.maxNum}"` : ''}`
+          : c.tipo === 'tel' ? 'inputmode="tel" placeholder="(00) 00000-0000"' : `maxlength="${c.max ?? 200}"`;
+        campo = `<input id="${id}" name="${c.nome}" type="${tipo}" ${extra} value="${esc(v)}">`;
+      }
+      return `<label for="${id}">${esc(c.rotulo)}${c.obrigatorio ? '' : ' <span class="opcional">(opcional)</span>'}${dica}</label>${campo}`;
+    }).join('');
+  }
+  function lerCampos(form, campos) {
+    const r = {};
+    for (const c of campos) {
+      const el = form.elements[c.nome];
+      if (!el) continue;
+      if (c.tipo === 'check') r[c.nome] = el.checked;
+      else if (c.tipo === 'numero') r[c.nome] = el.value === '' ? null : Number(el.value);
+      else r[c.nome] = el.value.trim();
+    }
+    return r;
+  }
+
+  // Envia um formulário e mostra o erro dentro dele, se houver.
+  async function enviarFormulario(form, acao) {
+    const $b = form.querySelector('button[type=submit]');
+    const $msg = form.querySelector('.msg-form');
+    const textoBotao = $b.textContent;
+    $b.disabled = true; $b.textContent = 'Salvando…'; $msg.textContent = '';
+    try { await acao(); } catch (e) {
+      if (e.status === 401) throw e;
+      $msg.textContent = e.message; $b.disabled = false; $b.textContent = textoBotao;
     }
   }
 
-  function telaLogin(aviso = '') {
+  // --- Tela de lista com CRUD (serve para serviços, promoções e dias especiais)
+  async function gerenciarLista($c, op) {
+    const $area = document.createElement('div');
+    $area.className = 'secao';
+    $c.appendChild($area);
+    let itens = await painelApi(`/${op.rota}`);
+
+    const desenhar = () => {
+      $area.innerHTML = `
+        <div class="linha-titulo"><h2>${op.titulo}</h2><button class="pequeno" data-novo>+ ${op.novo}</button></div>
+        ${op.intro ?? ''}
+        <div data-form></div>
+        ${itens.length ? itens.map((it) => `
+          <div class="cartao item" data-id="${esc(it.id)}">
+            ${op.resumo(it)}
+            <div class="acoes-item">
+              ${op.extras ? op.extras(it) : ''}
+              <button class="secundario pequeno" data-acao="editar">Editar</button>
+              <button class="perigo pequeno" data-acao="excluir">Excluir</button>
+            </div>
+          </div>`).join('') : `<p class="suave">${op.vazio ?? 'Nada cadastrado ainda.'}</p>`}`;
+      $area.querySelector('[data-novo]').onclick = () => abrirFormulario(null);
+      $area.querySelectorAll('.item').forEach(($it) => {
+        const item = itens.find((x) => x.id === $it.dataset.id);
+        $it.querySelectorAll('[data-acao]').forEach((b) => {
+          b.onclick = async () => {
+            const acao = b.dataset.acao;
+            if (acao === 'editar') return abrirFormulario(item);
+            if (acao === 'excluir') {
+              if (!await perguntar(`Excluir <strong>${esc(op.nomeDe(item))}</strong>? Não dá para desfazer.`)) return;
+              const r = await painelApi(`/${op.rota}/${item.id}`, { metodo: 'DELETE' });
+              avisar(r.mensagem || 'Excluído.');
+              return recarregar();
+            }
+            if (op.acoesExtras?.[acao]) { await op.acoesExtras[acao](item); return recarregar(); }
+          };
+        });
+      });
+    };
+
+    const recarregar = async () => { itens = await painelApi(`/${op.rota}`); desenhar(); };
+
+    const abrirFormulario = (item) => {
+      const $f = $area.querySelector('[data-form]');
+      $f.innerHTML = `
+        <form class="cartao form-cartao" novalidate>
+          <h2>${item ? 'Editar' : op.novo}</h2>
+          ${htmlCampos(op.campos, item ?? {}, op.rota)}
+          <p class="mensagem erro msg-form" role="alert"></p>
+          <div class="acoes"><button type="button" class="secundario" data-cancelar>Cancelar</button>
+          <button type="submit">Salvar</button></div>
+        </form>`;
+      const form = $f.querySelector('form');
+      form.querySelector('[data-cancelar]').onclick = () => { $f.innerHTML = ''; };
+      form.onsubmit = (ev) => {
+        ev.preventDefault();
+        enviarFormulario(form, async () => {
+          const dados = lerCampos(form, op.campos);
+          await painelApi(item ? `/${op.rota}/${item.id}` : `/${op.rota}`, { metodo: item ? 'PATCH' : 'POST', corpo: dados });
+          avisar(item ? 'Alterações salvas.' : 'Cadastrado!');
+          salaoCache = null;
+          await recarregar();
+        });
+      };
+      form.scrollIntoView({ block: 'start' });
+      form.querySelector('input, textarea, select')?.focus({ preventScroll: true });
+    };
+
+    desenhar();
+  }
+
+  // --- Moldura do painel: título, abas e área de conteúdo
+  async function telaPainel(sub = '', params = new URLSearchParams()) {
+    if (!sessao.ler()) return telaLogin();
+    document.body.classList.add('largo');
+    const [aba = 'pedidos', ...resto] = sub.split('/').filter(Boolean);
     $app.innerHTML = `
+      <div class="painel-topo">
+        <h1>Olá, Lucy!</h1>
+        <button class="secundario pequeno" id="sair">Sair</button>
+      </div>
+      <nav class="abas" aria-label="Seções do painel">
+        ${ABAS.map(([id, nome]) => `<a href="#/painel/${id}" ${id === aba ? 'class="ativa" aria-current="page"' : ''}>${nome}</a>`).join('')}
+      </nav>
+      <div id="aviso" role="status" aria-live="polite"></div>
+      <div id="conteudo"><p class="carregando">Carregando…</p></div>`;
+    document.getElementById('sair').onclick = sair;
+    $app.querySelector('.abas .ativa')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    mostrarAviso();
+
+    const $c = document.getElementById('conteudo');
+    const telas = {
+      pedidos: abaPedidos, agenda: abaAgenda, clientes: abaClientes, servicos: abaServicos,
+      horarios: abaHorarios, promocoes: abaPromocoes, salao: abaSalao, avaliacoes: abaAvaliacoes,
+    };
+    try {
+      $c.innerHTML = '';
+      await (telas[aba] ?? abaPedidos)($c, resto, params);
+    } catch (e) {
+      if (e.status === 401) { sessao.apagar(); return telaLogin('Sua sessão expirou. Entre de novo.'); }
+      $c.innerHTML = `<p class="mensagem erro" role="alert">${esc(e.message)}</p>`;
+    }
+  }
+
+  // --- Cartão de um agendamento (usado em Pedidos, Agenda e na ficha)
+  function cartaoAgendamento(a, { comData = false, comAcoes = true } = {}) {
+    const c = a.cliente ?? {};
+    const alerta = [c.alergias && `Alergias: ${c.alergias}`, c.necessidades_especificas && `Necessidades: ${c.necessidades_especificas}`]
+      .filter(Boolean).map((t) => `<p class="alerta-cliente">${esc(t)}</p>`).join('');
+    const botoes = {
+      solicitado: [['confirmar', 'Confirmar', ''], ['recusar', 'Recusar', 'perigo']],
+      agendado: [['concluir', 'Concluído', ''], ['faltou', 'Faltou', 'secundario'], ['cancelar', 'Cancelar', 'perigo']],
+    }[a.status] ?? [];
+    return `
+      <div class="cartao item agendamento ${esc(a.status)}" data-id="${esc(a.id)}">
+        <div class="linha-titulo">
+          <p class="quando">${comData ? esc(fmt.dataLonga(a.inicio)) + ' · ' : ''}${esc(fmt.hora(a.inicio))} às ${esc(fmt.hora(a.fim))}</p>
+          <span class="selo ${esc(a.status)}">${esc(STATUS[a.status] ?? a.status)}</span>
+        </div>
+        <p style="margin:.25rem 0"><a href="#/painel/clientes/${esc(c.id)}"><strong>${esc(c.nome ?? 'Cliente')}</strong></a>
+          ${c.whatsapp ? ` · <a href="${linkZap(c.whatsapp)}" target="_blank" rel="noopener">${esc(zapBonito(c.whatsapp))}</a>` : ''}</p>
+        <p class="suave" style="margin:0">${a.servicos.map((s) => esc(s.nome)).join(' + ') || '—'} · <strong>${fmt.reais(a.valor_total)}</strong>
+          ${a.origem === 'cliente' ? ' · pedido pelo site' : ''}</p>
+        ${alerta}
+        ${a.observacao_cliente ? `<p class="suave" style="white-space:pre-line;margin:.5rem 0 0">Recado: ${esc(a.observacao_cliente)}</p>` : ''}
+        ${comAcoes ? `<div class="acoes-item">
+          ${botoes.map(([acao, rotulo, classe]) => `<button class="pequeno ${classe}" data-acao="${acao}">${rotulo}</button>`).join('')}
+          <button class="secundario pequeno" data-acao="editar">Editar</button>
+          <button class="perigo pequeno" data-acao="excluir">Excluir</button>
+        </div>
+        <div data-form></div>` : ''}
+      </div>`;
+  }
+  const STATUS = {
+    solicitado: 'Aguardando você', agendado: 'Confirmado', recusado: 'Recusado',
+    concluido: 'Concluído', cancelado: 'Cancelado', faltou: 'Faltou',
+  };
+
+  // Liga os botões dos cartões de agendamento. "depois" recarrega a tela.
+  function ligarAgendamentos($raiz, lista, depois) {
+    $raiz.querySelectorAll('.agendamento').forEach(($card) => {
+      const a = lista.find((x) => x.id === $card.dataset.id);
+      $card.querySelectorAll('[data-acao]').forEach((b) => {
+        b.onclick = async () => {
+          const acao = b.dataset.acao;
+          if (acao === 'editar') return formularioAgendamento($card.querySelector('[data-form]'), a, depois);
+          if (acao === 'excluir') {
+            if (!await perguntar(`Excluir de vez o horário de <strong>${esc(a.cliente?.nome)}</strong>?
+              <br><span class="suave">Dica: para manter o histórico, prefira "Cancelar".</span>`)) return;
+            await painelApi(`/agendamentos/${a.id}`, { metodo: 'DELETE' });
+            avisar('Horário excluído.');
+            return depois();
+          }
+          if (['recusar', 'cancelar'].includes(acao) &&
+              !await perguntar(`${acao === 'recusar' ? 'Recusar o pedido' : 'Cancelar o horário'} de <strong>${esc(a.cliente?.nome)}</strong>?`,
+                { sim: acao === 'recusar' ? 'Sim, recusar' : 'Sim, cancelar' })) return;
+          b.disabled = true;
+          try {
+            await painelApi(`/agendamentos/${a.id}/${acao}`, { metodo: 'POST' });
+            avisar({ confirmar: 'Horário confirmado!', recusar: 'Pedido recusado.', cancelar: 'Horário cancelado.',
+              concluir: 'Atendimento concluído.', faltou: 'Marcado como falta.' }[acao]);
+            depois();
+          } catch (e) { b.disabled = false; if (e.status === 401) throw e; avisar(e.message, 'erro'); }
+        };
+      });
+    });
+  }
+
+  // Formulário de agendamento: serve para MARCAR (novo) e para EDITAR.
+  async function formularioAgendamento($onde, a, depois, padroes = {}) {
+    const [servicos, clientes] = await Promise.all([
+      painelApi('/servicos'),
+      a ? Promise.resolve([]) : painelApi('/clientes'),
+    ]);
+    const escolhidos = new Set(a ? a.servicos.map((s) => s.servico_id) : []);
+    const visiveis = servicos.filter((s) => s.ativo || escolhidos.has(s.id));
+    const data = a ? dataNoFuso(a.inicio) : (padroes.dia ?? hojeNoSalao());
+    $onde.innerHTML = `
+      <form class="cartao form-cartao" novalidate>
+        <h2>${a ? 'Editar horário' : 'Marcar horário'}</h2>
+        ${a ? `<p><strong>${esc(a.cliente?.nome)}</strong></p>` : `
+          <label for="ag-cliente">Cliente</label>
+          <select id="ag-cliente" name="cliente">
+            <option value="">— escolha —</option>
+            <option value="nova">+ Cliente nova</option>
+            ${clientes.map((c) => `<option value="${esc(c.id)}" ${c.id === padroes.cliente ? 'selected' : ''}>${esc(c.nome)} · ${esc(zapBonito(c.whatsapp))}</option>`).join('')}
+          </select>
+          <div data-nova hidden>
+            <label for="ag-nome">Nome da cliente nova</label><input id="ag-nome" name="nome" maxlength="80">
+            <label for="ag-zap">WhatsApp</label><input id="ag-zap" name="whatsapp" type="tel" inputmode="tel" placeholder="(00) 00000-0000">
+          </div>`}
+        <fieldset style="border:0;padding:0;margin:1rem 0 0"><legend style="font-weight:600;margin-bottom:.35rem">Serviços</legend>
+          ${visiveis.map((s) => `<label class="opcao"><input type="checkbox" name="servico" value="${esc(s.id)}" data-min="${s.duracao_min}"
+            ${escolhidos.has(s.id) ? 'checked' : ''}><span class="info"><span class="nome">${esc(s.nome)}</span>
+            <span class="suave">${fmt.duracao(s.duracao_min)}</span></span><strong>${fmt.reais(s.preco)}</strong></label>`).join('')}
+        </fieldset>
+        <div class="tres-colunas">
+          <div><label for="ag-data">Dia</label><input id="ag-data" name="data" type="date" value="${esc(data)}"></div>
+          <div><label for="ag-ini">Início</label><input id="ag-ini" name="inicio" type="time" value="${a ? esc(fmt.hora(a.inicio)) : esc(padroes.hora ?? '')}"></div>
+          <div><label for="ag-fim">Término</label><input id="ag-fim" name="fim" type="time" value="${a ? esc(fmt.hora(a.fim)) : ''}"></div>
+        </div>
+        <p class="dica">O término é calculado pela soma dos serviços; você pode ajustar.</p>
+        <label for="ag-obs">Recado / observação <span class="opcional">(opcional)</span></label>
+        <textarea id="ag-obs" name="observacao" maxlength="500">${esc(a?.observacao_cliente ?? '')}</textarea>
+        <p class="mensagem erro msg-form" role="alert"></p>
+        <div class="acoes"><button type="button" class="secundario" data-cancelar>Cancelar</button><button type="submit">Salvar</button></div>
+      </form>`;
+    const form = $onde.querySelector('form');
+    const $sel = form.elements.cliente;
+    if ($sel) $sel.onchange = () => { form.querySelector('[data-nova]').hidden = $sel.value !== 'nova'; };
+    // Término automático: início + soma das durações (até a Lucy mexer no término).
+    let fimManual = !!a;
+    const recalcular = () => {
+      if (fimManual || !form.elements.inicio.value) return;
+      const min = [...form.querySelectorAll('[name=servico]:checked')].reduce((t, x) => t + Number(x.dataset.min), 0);
+      const [h, m] = form.elements.inicio.value.split(':').map(Number);
+      const total = Math.min(h * 60 + m + (min || 60), 23 * 60 + 59);
+      form.elements.fim.value = `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
+    };
+    form.elements.fim.oninput = () => { fimManual = true; };
+    form.elements.inicio.oninput = recalcular;
+    form.querySelectorAll('[name=servico]').forEach((x) => { x.onchange = () => { if (!a) fimManual = false; recalcular(); }; });
+    form.querySelector('[data-cancelar]').onclick = () => { $onde.innerHTML = ''; };
+    form.onsubmit = (ev) => {
+      ev.preventDefault();
+      enviarFormulario(form, async () => {
+        const servs = [...form.querySelectorAll('[name=servico]:checked')].map((x) => x.value);
+        const dia = form.elements.data.value, ini = form.elements.inicio.value, fim = form.elements.fim.value;
+        if (!servs.length) throw new ErroApi('Escolha pelo menos um serviço.', 400);
+        if (!dia || !ini) throw new ErroApi('Informe o dia e a hora de início.', 400);
+        const corpo = {
+          servicos: servs, inicio: instanteDe(dia, ini), fim: fim ? instanteDe(dia, fim) : null,
+          observacao: form.elements.observacao.value.trim(),
+        };
+        if (a) {
+          await painelApi(`/agendamentos/${a.id}`, { metodo: 'PATCH', corpo });
+          avisar('Horário atualizado.');
+        } else {
+          if (!$sel.value) throw new ErroApi('Escolha a cliente (ou "Cliente nova").', 400);
+          if ($sel.value === 'nova') corpo.cliente = { nome: form.elements.nome.value.trim(), whatsapp: form.elements.whatsapp.value.trim() };
+          else corpo.cliente_id = $sel.value;
+          await painelApi('/agendamentos', { metodo: 'POST', corpo });
+          avisar('Horário marcado e confirmado!');
+        }
+        $onde.innerHTML = '';
+        depois(dia);
+      });
+    };
+    form.scrollIntoView({ block: 'start' });
+  }
+
+  // --- ABA: PEDIDOS (o que está esperando resposta)
+  async function abaPedidos($c) {
+    const hoje = hojeNoSalao();
+    const [pedidos, deHoje] = await Promise.all([
+      painelApi('/agendamentos?status=solicitado'),
+      painelApi(`/agendamentos?de=${hoje}&ate=${hoje}`),
+    ]);
+    const confirmadosHoje = deHoje.filter((a) => a.status === 'agendado').length;
+    $c.innerHTML = `
+      <a class="cartao destaque resumo-hoje" href="#/painel/agenda">
+        <span>Hoje: <strong>${confirmadosHoje}</strong> atendimento${confirmadosHoje === 1 ? '' : 's'} confirmado${confirmadosHoje === 1 ? '' : 's'}</span>
+        <span>Ver agenda →</span></a>
+      <h2>Pedidos esperando resposta ${pedidos.length ? `(${pedidos.length})` : ''}</h2>
+      <div id="lista-pedidos">${pedidos.length ? pedidos.map((a) => cartaoAgendamento(a, { comData: true })).join('')
+        : '<p class="cartao suave">Nenhum pedido esperando resposta. 🎉</p>'}</div>`;
+    ligarAgendamentos($c, pedidos, () => telaPainel('pedidos'));
+  }
+
+  // --- ABA: AGENDA (um dia por vez)
+  async function abaAgenda($c, resto, params) {
+    const dia = params.get('dia') && /^\d{4}-\d{2}-\d{2}$/.test(params.get('dia')) ? params.get('dia') : hojeNoSalao();
+    const lista = await painelApi(`/agendamentos?de=${dia}&ate=${dia}`);
+    const irPara = (d) => { location.hash = `#/painel/agenda?dia=${d}`; };
+    $c.innerHTML = `
+      <div class="navegar-dia">
+        <button class="secundario pequeno" id="ant" aria-label="Dia anterior">◀</button>
+        <input type="date" id="dia" value="${esc(dia)}" aria-label="Escolher dia">
+        <button class="secundario pequeno" id="prox" aria-label="Próximo dia">▶</button>
+        ${dia !== hojeNoSalao() ? '<button class="secundario pequeno" id="hoje">Hoje</button>' : ''}
+      </div>
+      <div class="linha-titulo"><h2>${esc(fmt.partesDoDia(dia).longa)}</h2><button class="pequeno" id="marcar">+ Marcar horário</button></div>
+      <div id="form-novo"></div>
+      ${lista.length ? lista.map((a) => cartaoAgendamento(a)).join('') : '<p class="cartao suave">Nenhum horário neste dia.</p>'}`;
+    document.getElementById('ant').onclick = () => irPara(somarDias(dia, -1));
+    document.getElementById('prox').onclick = () => irPara(somarDias(dia, 1));
+    document.getElementById('hoje')?.addEventListener('click', () => irPara(hojeNoSalao()));
+    document.getElementById('dia').onchange = (e) => e.target.value && irPara(e.target.value);
+    const recarregar = (d = dia) => (d === dia ? telaPainel('agenda', new URLSearchParams({ dia })) : irPara(d));
+    document.getElementById('marcar').onclick = () => formularioAgendamento(document.getElementById('form-novo'), null, recarregar, { dia });
+    ligarAgendamentos($c, lista, recarregar);
+    if (resto[0] === 'novo') formularioAgendamento(document.getElementById('form-novo'), null, recarregar, { dia, cliente: params.get('cliente') });
+  }
+
+  // --- ABA: CLIENTES (lista + ficha)
+  const CAMPOS_CLIENTE = [
+    { nome: 'nome', rotulo: 'Nome', obrigatorio: true, max: 80 },
+    { nome: 'whatsapp', rotulo: 'WhatsApp', tipo: 'tel', obrigatorio: true },
+    { nome: 'email', rotulo: 'E-mail', tipo: 'email', max: 120 },
+    { nome: 'data_nascimento', rotulo: 'Data de nascimento', tipo: 'data' },
+    { nome: 'alergias', rotulo: 'Alergias', tipo: 'area', max: 500 },
+    { nome: 'necessidades_especificas', rotulo: 'Necessidades específicas', tipo: 'area', max: 500, dica: 'Acessibilidade, mobilidade, sensibilidades, gestação…' },
+    { nome: 'observacoes', rotulo: 'Anotações', tipo: 'area', max: 2000 },
+    { nome: 'aceita_lembrete_email', rotulo: 'Aceita lembretes por e-mail', tipo: 'check', padrao: true },
+  ];
+
+  async function abaClientes($c, resto) {
+    if (resto[0]) return fichaCliente($c, resto[0]);
+    const todos = await painelApi('/clientes');
+    $c.innerHTML = `
+      <div class="linha-titulo"><h2>Clientes (${todos.length})</h2><button class="pequeno" id="nova">+ Nova cliente</button></div>
+      <div id="form-cliente"></div>
+      <label for="busca" class="sr">Buscar cliente</label>
+      <input id="busca" type="search" placeholder="Buscar por nome ou WhatsApp" autocomplete="off">
+      <div id="lista-clientes" class="lista-simples"></div>`;
+    const $lista = document.getElementById('lista-clientes');
+    const desenhar = (filtro = '') => {
+      const f = filtro.toLowerCase(), n = filtro.replace(/\D/g, '');
+      const lista = todos.filter((c) => !f || c.nome.toLowerCase().includes(f) || (n.length >= 3 && c.whatsapp.includes(n)));
+      $lista.innerHTML = lista.length ? lista.map((c) => `
+        <a class="cartao item-link" href="#/painel/clientes/${esc(c.id)}">
+          <strong>${esc(c.nome)}</strong><span class="suave">${esc(zapBonito(c.whatsapp))}</span></a>`).join('')
+        : `<p class="suave">${todos.length ? 'Ninguém encontrado.' : 'Nenhuma cliente cadastrada ainda.'}</p>`;
+    };
+    document.getElementById('busca').oninput = (e) => desenhar(e.target.value);
+    document.getElementById('nova').onclick = () => {
+      const $f = document.getElementById('form-cliente');
+      $f.innerHTML = `<form class="cartao form-cartao" novalidate><h2>Nova cliente</h2>${htmlCampos(CAMPOS_CLIENTE, {}, 'cl')}
+        <p class="mensagem erro msg-form" role="alert"></p>
+        <div class="acoes"><button type="button" class="secundario" data-cancelar>Cancelar</button><button type="submit">Salvar</button></div></form>`;
+      const form = $f.querySelector('form');
+      form.querySelector('[data-cancelar]').onclick = () => { $f.innerHTML = ''; };
+      form.onsubmit = (ev) => {
+        ev.preventDefault();
+        enviarFormulario(form, async () => {
+          const nova = await painelApi('/clientes', { metodo: 'POST', corpo: lerCampos(form, CAMPOS_CLIENTE) });
+          location.hash = `#/painel/clientes/${nova.id}`;
+        });
+      };
+      form.elements.nome.focus();
+    };
+    desenhar();
+  }
+
+  const CAMPOS_HISTORICO = [
+    { nome: 'data', rotulo: 'Data', tipo: 'data', obrigatorio: true },
+    { nome: 'servicos_realizados', rotulo: 'Serviços realizados', max: 300 },
+    { nome: 'tintura_utilizada', rotulo: 'Tintura utilizada', max: 200, dica: 'Marca, cor, número, oxidante…' },
+    { nome: 'tintura_quantidade', rotulo: 'Quantidade de tintura', max: 80, dica: 'Ex.: 1 tubo + 30 ml' },
+    { nome: 'anotacoes', rotulo: 'Anotações', tipo: 'area', max: 2000 },
+  ];
+
+  async function fichaCliente($c, id) {
+    const cl = await painelApi(`/clientes/${encodeURIComponent(id)}`);
+    const recarregar = () => telaPainel(`clientes/${id}`);
+    const linha = (rotulo, valor) => valor ? `<p><span class="suave">${rotulo}:</span> ${esc(valor)}</p>` : '';
+    $c.innerHTML = `
+      <button class="voltar" data-voltar="#/painel/clientes">← Voltar para clientes</button>
+      <div class="cartao" id="dados">
+        <div class="linha-titulo"><h2>${esc(cl.nome)}</h2><button class="secundario pequeno" id="editar">Editar</button></div>
+        <p><a href="${linkZap(cl.whatsapp)}" target="_blank" rel="noopener">${esc(zapBonito(cl.whatsapp))}</a>${cl.email ? ' · ' + esc(cl.email) : ''}</p>
+        ${cl.alergias ? `<p class="alerta-cliente">Alergias: ${esc(cl.alergias)}</p>` : ''}
+        ${cl.necessidades_especificas ? `<p class="alerta-cliente">Necessidades: ${esc(cl.necessidades_especificas)}</p>` : ''}
+        ${linha('Nascimento', cl.data_nascimento && fmt.partesDoDia(cl.data_nascimento).longa.replace(/^[^,]+, /, ''))}
+        ${cl.observacoes ? `<p style="white-space:pre-line"><span class="suave">Anotações:</span> ${esc(cl.observacoes)}</p>` : ''}
+        <p class="suave">Lembretes por e-mail: ${cl.aceita_lembrete_email ? 'sim' : 'não'}</p>
+        <div class="acoes-item">
+          <a class="botao pequeno" href="#/painel/agenda/novo?cliente=${esc(cl.id)}">Marcar horário</a>
+          <button class="perigo pequeno" id="excluir">Excluir cliente</button>
+        </div>
+      </div>
+      <div class="linha-titulo"><h2>Histórico de atendimentos</h2><button class="pequeno" id="novo-hist">+ Adicionar</button></div>
+      <div id="form-hist"></div>
+      ${cl.historico.length ? cl.historico.map((h) => `
+        <div class="cartao item" data-hist="${esc(h.id)}">
+          <p class="quando">${esc(fmt.partesDoDia(h.data).longa)}</p>
+          ${linha('Serviços', h.servicos_realizados)}${linha('Tintura', h.tintura_utilizada)}${linha('Quantidade', h.tintura_quantidade)}
+          ${h.anotacoes ? `<p style="white-space:pre-line">${esc(h.anotacoes)}</p>` : ''}
+          <div class="acoes-item"><button class="secundario pequeno" data-acao="editar">Editar</button>
+            <button class="perigo pequeno" data-acao="excluir">Excluir</button></div>
+        </div>`).join('') : '<p class="suave">Nenhum atendimento anotado ainda.</p>'}
+      <h2 style="margin-top:1.5rem">Horários</h2>
+      ${cl.agendamentos.length ? cl.agendamentos.map((a) => cartaoAgendamento({ ...a, cliente: cl }, { comData: true, comAcoes: false })).join('')
+        : '<p class="suave">Nenhum horário.</p>'}`;
+
+    // Editar a ficha
+    document.getElementById('editar').onclick = () => {
+      const $d = document.getElementById('dados');
+      $d.innerHTML = `<form class="form-cartao" novalidate><h2>Editar ficha</h2>${htmlCampos(CAMPOS_CLIENTE, cl, 'cl')}
+        <p class="mensagem erro msg-form" role="alert"></p>
+        <div class="acoes"><button type="button" class="secundario" data-cancelar>Cancelar</button><button type="submit">Salvar</button></div></form>`;
+      const form = $d.querySelector('form');
+      form.querySelector('[data-cancelar]').onclick = recarregar;
+      form.onsubmit = (ev) => {
+        ev.preventDefault();
+        enviarFormulario(form, async () => {
+          await painelApi(`/clientes/${cl.id}`, { metodo: 'PATCH', corpo: lerCampos(form, CAMPOS_CLIENTE) });
+          await recarregar(); avisar('Ficha atualizada.');
+        });
+      };
+    };
+
+    // Excluir a cliente (e tudo dela)
+    document.getElementById('excluir').onclick = async () => {
+      const n = cl.agendamentos.length, h = cl.historico.length;
+      if (!await perguntar(`Excluir <strong>${esc(cl.nome)}</strong>?<br>Também serão apagados ${n} horário${n === 1 ? '' : 's'}
+        e ${h} anotaç${h === 1 ? 'ão' : 'ões'} do histórico. Não dá para desfazer.`, { sim: 'Sim, excluir tudo' })) return;
+      await painelApi(`/clientes/${cl.id}`, { metodo: 'DELETE' });
+      location.hash = '#/painel/clientes';
+    };
+
+    // Histórico: adicionar, editar, excluir
+    const formHist = (h) => {
+      const $f = h ? $c.querySelector(`[data-hist="${h.id}"]`) : document.getElementById('form-hist');
+      $f.innerHTML = `<form class="${h ? '' : 'cartao '}form-cartao" novalidate><h2>${h ? 'Editar atendimento' : 'Novo atendimento'}</h2>
+        ${htmlCampos(CAMPOS_HISTORICO, h ?? { data: hojeNoSalao() }, 'hi')}
+        <p class="mensagem erro msg-form" role="alert"></p>
+        <div class="acoes"><button type="button" class="secundario" data-cancelar>Cancelar</button><button type="submit">Salvar</button></div></form>`;
+      const form = $f.querySelector('form');
+      form.querySelector('[data-cancelar]').onclick = recarregar;
+      form.onsubmit = (ev) => {
+        ev.preventDefault();
+        enviarFormulario(form, async () => {
+          const corpo = lerCampos(form, CAMPOS_HISTORICO);
+          if (h) await painelApi(`/historico/${h.id}`, { metodo: 'PATCH', corpo });
+          else await painelApi(`/clientes/${cl.id}/historico`, { metodo: 'POST', corpo });
+          await recarregar(); avisar(h ? 'Atendimento atualizado.' : 'Atendimento anotado.');
+        });
+      };
+      form.scrollIntoView({ block: 'start' });
+    };
+    document.getElementById('novo-hist').onclick = () => formHist(null);
+    $c.querySelectorAll('[data-hist]').forEach(($h) => {
+      const h = cl.historico.find((x) => x.id === $h.dataset.hist);
+      $h.querySelector('[data-acao=editar]').onclick = () => formHist(h);
+      $h.querySelector('[data-acao=excluir]').onclick = async () => {
+        if (!await perguntar(`Excluir a anotação de <strong>${esc(fmt.partesDoDia(h.data).longa)}</strong>?`)) return;
+        await painelApi(`/historico/${h.id}`, { metodo: 'DELETE' });
+        await recarregar(); avisar('Anotação excluída.');
+      };
+    });
+  }
+
+  // --- ABA: SERVIÇOS
+  async function abaServicos($c) {
+    await gerenciarLista($c, {
+      titulo: 'Serviços', rota: 'servicos', novo: 'Novo serviço', nomeDe: (s) => s.nome,
+      intro: '<p class="suave">Serviço já usado em atendimentos não é apagado: ele é desativado, para não estragar o histórico.</p>',
+      campos: [
+        { nome: 'nome', rotulo: 'Nome', obrigatorio: true, max: 80 },
+        { nome: 'descricao', rotulo: 'Descrição', max: 200, dica: 'Ex.: Com lavagem grátis' },
+        { nome: 'duracao_min', rotulo: 'Duração (minutos)', tipo: 'numero', obrigatorio: true, min: 5, maxNum: 600 },
+        { nome: 'preco', rotulo: 'Preço (R$)', tipo: 'dinheiro', obrigatorio: true },
+        { nome: 'retorno_dias', rotulo: 'A cliente costuma voltar a cada (dias)', tipo: 'numero', min: 1, dica: 'Deixe vazio se não quiser acompanhar o retorno.' },
+        { nome: 'ordem', rotulo: 'Ordem na lista', tipo: 'numero', min: 0 },
+        { nome: 'ativo', rotulo: 'Aparece para as clientes', tipo: 'check', padrao: true },
+      ],
+      resumo: (s) => `<p class="quando">${esc(s.nome)} ${s.ativo ? '' : '<span class="selo cancelado">Desativado</span>'}</p>
+        <p class="suave" style="margin:0">${fmt.duracao(s.duracao_min)} · <strong>${fmt.reais(s.preco)}</strong>
+        ${s.retorno_dias ? ` · volta a cada ${s.retorno_dias} dias` : ''}${s.descricao ? ` · ${esc(s.descricao)}` : ''}</p>`,
+      extras: (s) => `<button class="secundario pequeno" data-acao="alternar">${s.ativo ? 'Desativar' : 'Ativar'}</button>`,
+      acoesExtras: {
+        alternar: async (s) => {
+          await painelApi(`/servicos/${s.id}`, { metodo: 'PATCH', corpo: { ativo: !s.ativo } });
+          salaoCache = null; avisar(s.ativo ? 'Serviço desativado.' : 'Serviço ativado.');
+        },
+      },
+    });
+  }
+
+  // --- ABA: HORÁRIOS (semana + dias especiais)
+  async function abaHorarios($c) {
+    const semana = await painelApi('/horarios');
+    $c.innerHTML = `
+      <form class="cartao" id="form-semana" novalidate>
+        <h2>Horário da semana</h2>
+        <p class="suave">É a faixa em que as clientes podem pedir horário. Você sempre confirma ou recusa.</p>
+        ${semana.map((d) => `
+          <fieldset class="dia-semana" data-dia="${d.dia_semana}">
+            <legend><label class="opcao-inline"><input type="checkbox" name="trabalha" ${d.trabalha ? 'checked' : ''}> ${NOMES_DIAS[d.dia_semana]}</label></legend>
+            <div class="quatro-colunas">
+              <label>Abre<input type="time" name="abre" value="${esc((d.abre ?? '').slice(0, 5))}"></label>
+              <label>Fecha<input type="time" name="fecha" value="${esc((d.fecha ?? '').slice(0, 5))}"></label>
+              <label>Pausa de<input type="time" name="pausa_inicio" value="${esc((d.pausa_inicio ?? '').slice(0, 5))}"></label>
+              <label>até<input type="time" name="pausa_fim" value="${esc((d.pausa_fim ?? '').slice(0, 5))}"></label>
+            </div>
+          </fieldset>`).join('')}
+        <p class="mensagem erro msg-form" role="alert"></p>
+        <button type="submit" class="botao-largo">Salvar horários</button>
+      </form>
+      <div id="especiais"></div>`;
+    const form = document.getElementById('form-semana');
+    const ajustar = () => form.querySelectorAll('.dia-semana').forEach(($d) => {
+      const on = $d.querySelector('[name=trabalha]').checked;
+      $d.querySelectorAll('input[type=time]').forEach((i) => { i.disabled = !on; });
+      $d.classList.toggle('fechado', !on);
+    });
+    form.querySelectorAll('[name=trabalha]').forEach((x) => { x.onchange = ajustar; });
+    ajustar();
+    form.onsubmit = (ev) => {
+      ev.preventDefault();
+      enviarFormulario(form, async () => {
+        const dias = [...form.querySelectorAll('.dia-semana')].map(($d) => ({
+          trabalha: $d.querySelector('[name=trabalha]').checked,
+          abre: $d.querySelector('[name=abre]').value, fecha: $d.querySelector('[name=fecha]').value,
+          pausa_inicio: $d.querySelector('[name=pausa_inicio]').value, pausa_fim: $d.querySelector('[name=pausa_fim]').value,
+        }));
+        await painelApi('/horarios', { metodo: 'PUT', corpo: dias });
+        salaoCache = null;
+        form.querySelector('button[type=submit]').disabled = false;
+        form.querySelector('button[type=submit]').textContent = 'Salvar horários';
+        avisar('Horários salvos.');
+      });
+    };
+    await gerenciarLista(document.getElementById('especiais'), {
+      titulo: 'Feriados, folgas e dias diferentes', rota: 'dias-especiais', novo: 'Novo dia',
+      nomeDe: (d) => fmt.partesDoDia(d.data).longa,
+      vazio: 'Nenhum dia especial cadastrado.',
+      campos: [
+        { nome: 'data', rotulo: 'Data', tipo: 'data', obrigatorio: true },
+        { nome: 'tipo', rotulo: 'Neste dia', tipo: 'select', opcoes: [['fechado', 'Não vou trabalhar'], ['horario_especial', 'Vou trabalhar em horário diferente']], padrao: 'fechado' },
+        { nome: 'abre', rotulo: 'Abre', tipo: 'hora', dica: 'Só se for horário diferente.' },
+        { nome: 'fecha', rotulo: 'Fecha', tipo: 'hora', dica: 'Só se for horário diferente.' },
+        { nome: 'motivo', rotulo: 'Motivo', max: 120, dica: 'Ex.: Feriado de Natal, consulta médica' },
+      ],
+      resumo: (d) => `<p class="quando">${esc(fmt.partesDoDia(d.data).longa)}</p>
+        <p class="suave" style="margin:0">${d.tipo === 'fechado' ? 'Fechado' : `Das ${esc(fmt.horaCurta(d.abre.slice(0, 5)))} às ${esc(fmt.horaCurta(d.fecha.slice(0, 5)))}`}
+        ${d.motivo ? ' · ' + esc(d.motivo) : ''}${d.data < hojeNoSalao() ? ' · já passou' : ''}</p>`,
+    });
+  }
+
+  // --- ABA: PROMOÇÕES
+  async function abaPromocoes($c) {
+    await gerenciarLista($c, {
+      titulo: 'Promoções', rota: 'promocoes', novo: 'Nova promoção', nomeDe: (p) => p.titulo,
+      intro: '<p class="suave">Só as promoções <strong>ligadas</strong> aparecem na página das clientes.</p>',
+      campos: [
+        { nome: 'titulo', rotulo: 'Título', obrigatorio: true, max: 80 },
+        { nome: 'descricao', rotulo: 'Descrição', tipo: 'area', max: 400 },
+        { nome: 'valida_ate', rotulo: 'Válida até', tipo: 'data' },
+        { nome: 'ativa', rotulo: 'Ligada (aparece para as clientes)', tipo: 'check' },
+      ],
+      resumo: (p) => `<p class="quando">${esc(p.titulo)} <span class="selo ${p.ativa ? 'agendado' : 'cancelado'}">${p.ativa ? 'Ligada' : 'Desligada'}</span></p>
+        ${p.descricao ? `<p class="suave" style="margin:0">${esc(p.descricao)}</p>` : ''}
+        ${p.valida_ate ? `<p class="suave" style="margin:0">Até ${esc(fmt.partesDoDia(p.valida_ate).longa)}</p>` : ''}`,
+      extras: (p) => `<button class="pequeno ${p.ativa ? 'secundario' : ''}" data-acao="alternar">${p.ativa ? 'Desligar' : 'Ligar'}</button>`,
+      acoesExtras: {
+        alternar: async (p) => {
+          await painelApi(`/promocoes/${p.id}`, { metodo: 'PATCH', corpo: { ativa: !p.ativa } });
+          avisar(p.ativa ? 'Promoção desligada.' : 'Promoção ligada!');
+        },
+      },
+    });
+  }
+
+  // --- ABA: SALÃO (configurações)
+  const CAMPOS_SALAO = [
+    ['Dados do salão', [
+      { nome: 'nome_salao', rotulo: 'Nome do salão', obrigatorio: true, max: 80 },
+      { nome: 'endereco', rotulo: 'Endereço', max: 200 },
+      { nome: 'whatsapp_lucy', rotulo: 'WhatsApp do salão', tipo: 'tel' },
+      { nome: 'email_lucy', rotulo: 'E-mail', tipo: 'email', max: 120 },
+    ]],
+    ['Pix', [
+      { nome: 'chave_pix', rotulo: 'Chave Pix', max: 120 },
+      { nome: 'nome_recebedor_pix', rotulo: 'Nome no Pix', max: 25, dica: 'Até 25 letras, sem acento.' },
+      { nome: 'cidade_pix', rotulo: 'Cidade no Pix', max: 15, dica: 'Até 15 letras, sem acento.' },
+    ]],
+    ['Agenda', [
+      { nome: 'intervalo_agenda_min', rotulo: 'Horários aparecem a cada (minutos)', tipo: 'numero', min: 10, maxNum: 120 },
+      { nome: 'antecedencia_min_horas', rotulo: 'Antecedência mínima para pedir (horas)', tipo: 'numero', min: 0 },
+      { nome: 'antecedencia_cancelamento_horas', rotulo: 'Antecedência para cancelar (horas)', tipo: 'numero', min: 0, dica: '0 = pode cancelar até a hora marcada.' },
+      { nome: 'dias_a_frente', rotulo: 'Até quantos dias no futuro dá para pedir', tipo: 'numero', min: 1, maxNum: 180 },
+      { nome: 'retorno_momento', rotulo: 'Quando oferecer o retorno', tipo: 'select',
+        opcoes: [['ao_finalizar', 'Ao finalizar o serviço'], ['apos_pagamento', 'Depois do pagamento']] },
+    ]],
+    ['Catálogos', [
+      { nome: 'codigo_avon', rotulo: 'Código de consultora Avon', max: 40 }, { nome: 'link_avon', rotulo: 'Link do catálogo Avon', max: 300 },
+      { nome: 'codigo_natura', rotulo: 'Código de consultora Natura', max: 40 }, { nome: 'link_natura', rotulo: 'Link do catálogo Natura', max: 300 },
+      { nome: 'codigo_hinode', rotulo: 'Código de consultora Hinode', max: 40 }, { nome: 'link_hinode', rotulo: 'Link do catálogo Hinode', max: 300 },
+    ]],
+  ];
+  async function abaSalao($c) {
+    const cfg = await painelApi('/configuracoes');
+    const todos = CAMPOS_SALAO.flatMap(([, campos]) => campos);
+    $c.innerHTML = `<form class="cartao" id="form-salao" novalidate>
+      ${CAMPOS_SALAO.map(([titulo, campos]) => `<h2 style="margin-top:1.25rem">${titulo}</h2>${htmlCampos(campos, cfg, 'sa')}`).join('')}
+      <p class="mensagem erro msg-form" role="alert"></p>
+      <button type="submit" class="botao-largo">Salvar</button></form>`;
+    const form = document.getElementById('form-salao');
+    form.onsubmit = (ev) => {
+      ev.preventDefault();
+      enviarFormulario(form, async () => {
+        await painelApi('/configuracoes', { metodo: 'PATCH', corpo: lerCampos(form, todos) });
+        salaoCache = null;
+        form.querySelector('button[type=submit]').disabled = false;
+        form.querySelector('button[type=submit]').textContent = 'Salvar';
+        avisar('Dados do salão salvos.');
+      });
+    };
+  }
+
+  // --- ABA: AVALIAÇÕES (ver e excluir)
+  async function abaAvaliacoes($c) {
+    const lista = await painelApi('/avaliacoes');
+    $c.innerHTML = `<h2>Avaliações (${lista.length})</h2>
+      ${lista.length ? lista.map((a) => `
+        <div class="cartao item" data-id="${esc(a.id)}">
+          <p class="estrelas" aria-label="${a.nota} de 5 estrelas">${'★'.repeat(a.nota)}${'☆'.repeat(5 - a.nota)}</p>
+          ${a.comentario ? `<p>${esc(a.comentario)}</p>` : ''}
+          <p class="suave" style="margin:0">${esc(a.cliente_nome ?? 'Cliente')}${a.atendimento_em ? ' · atendimento de ' + esc(fmt.dataLonga(a.atendimento_em)) : ''}</p>
+          <div class="acoes-item"><button class="perigo pequeno" data-acao="excluir">Excluir</button></div>
+        </div>`).join('') : '<p class="cartao suave">Ainda não há avaliações. Elas chegam depois dos atendimentos (próximas etapas).</p>'}`;
+    $c.querySelectorAll('[data-acao=excluir]').forEach((b) => {
+      b.onclick = async () => {
+        if (!await perguntar('Excluir esta avaliação?')) return;
+        await painelApi(`/avaliacoes/${b.closest('.item').dataset.id}`, { metodo: 'DELETE' });
+        avisar('Avaliação excluída.'); telaPainel('avaliacoes');
+      };
+    });
+  }
+
+  function telaLogin(aviso = '') {
+    document.body.classList.remove('largo');
+    $app.innerHTML = `
+      <button class="voltar" data-voltar="#/">← Voltar ao site</button>
       <form class="cartao" id="form-login" novalidate>
         <h1>Área da Lucy</h1>
         <p class="suave">Entre com seu e-mail e senha.</p>
@@ -879,7 +1642,7 @@
       try {
         const s = await api('/api/login', { metodo: 'POST', corpo: { email, senha } });
         sessao.salvar(s);
-        telaPainel();
+        mostrar();
       } catch (e) {
         $msg.textContent = e.message;
         $entrar.disabled = false; $entrar.textContent = 'Entrar';
@@ -898,18 +1661,32 @@
   // ===================================================================
   // 5. NAVEGAÇÃO: escolhe a tela pelo que vem depois do # no endereço
   // ===================================================================
+  // Botões "← Voltar": voltam para a tela anterior do próprio site;
+  // se a pessoa chegou direto por um link, vão para um destino seguro.
+  let navegouNoSite = false;
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-voltar]');
+    if (!b) return;
+    e.preventDefault();
+    if (navegouNoSite && history.length > 1) history.back();
+    else location.hash = b.dataset.voltar;
+  });
+
   function mostrar() {
     const [rota, consulta] = (location.hash.replace(/^#/, '') || '/').split('?');
     const params = new URLSearchParams(consulta || '');
     atualizarNav();
-    if (rota.startsWith('/painel')) telaPainel();
+    if (!rota.startsWith('/painel')) document.body.classList.remove('largo');
+    document.getElementById('rodape').innerHTML = rota.startsWith('/painel')
+      ? '<a href="#/">Ver o site das clientes</a>' : '<a href="#/painel">Área da Lucy</a>';
+    if (rota.startsWith('/painel')) telaPainel(rota.slice('/painel'.length), params);
     else if (rota === '/agendar') telaAgendar(params);
     else if (rota.startsWith('/pedido/')) telaPedido(rota.slice('/pedido/'.length), params);
     else if (rota === '/meus-pedidos') telaMeusPedidos();
     else telaInicio();
     topoDaTela();
   }
-  window.addEventListener('hashchange', mostrar);
+  window.addEventListener('hashchange', () => { navegouNoSite = true; mostrar(); });
   mostrar();
   </script>
 </body>

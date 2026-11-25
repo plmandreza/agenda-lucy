@@ -543,14 +543,400 @@ app.post('/api/publico/pedidos/:token/cancelar', limitarAlteracoes, exigirConfig
 
 
 // ---------------------------------------------------------------------
-// 7. ERROS
+// 7. PAINEL DA LUCY (Etapa 4) — tudo aqui exige o login da Lucy
+//
+//    CRUD = Criar, Ler (visualizar), Atualizar (editar) e Deletar (excluir)
+//    para: agendamentos, clientes (fichas), histórico, serviços, horários,
+//    dias especiais, promoções, configurações e avaliações.
+// ---------------------------------------------------------------------
+const soLucy = [exigirConfiguracao, exigirLucy];
+
+// --- 7a. Validação genérica dos formulários --------------------------
+// Cada campo diz o tipo esperado; o servidor confere tudo antes de gravar.
+const TIPOS = {
+  texto: (v, c) => {
+    const t = String(v ?? '').trim();
+    if (t.length > (c.max ?? 500)) throw new Error();
+    return t || null;
+  },
+  inteiro: (v, c) => {
+    if (v === '' || v === null || v === undefined) return c.padrao ?? null;  // vazio → valor padrão (se houver)
+    const n = Number(v);
+    if (!Number.isInteger(n) || n < (c.min ?? -1e9) || n > (c.max ?? 1e9)) throw new Error();
+    return n;
+  },
+  dinheiro: (v) => {
+    const n = Number(String(v ?? '').replace(',', '.'));
+    if (String(v ?? '').trim() === '' || !(n >= 0) || n > 100000) throw new Error();
+    return Math.round(n * 100) / 100;
+  },
+  bool: (v) => v === true || v === 'true' || v === 1 || v === 'on',
+  data: (v) => { if (!v) return null; if (!dataValida(String(v))) throw new Error(); return String(v); },
+  hora: (v) => {
+    if (!v) return null;
+    if (!/^([01]\d|2[0-3]):[0-5]\d(:00)?$/.test(String(v))) throw new Error();
+    return String(v).slice(0, 5);
+  },
+  opcao: (v, c) => { if (!c.opcoes.includes(v)) throw new Error(); return v; },
+  whatsapp: (v) => { if (!v) return null; const n = normalizarWhatsapp(v); if (!n) throw new Error(); return n; },
+  email: (v) => {
+    const e = String(v ?? '').trim().toLowerCase();
+    if (!e) return null;
+    if (!emailValido(e) || e.length > 120) throw new Error();
+    return e;
+  },
+};
+
+function limparDados(corpo, campos, parcial = false) {
+  const entrada = corpo ?? {};
+  const saida = {};
+  for (const [nome, c] of Object.entries(campos)) {
+    if (!(nome in entrada)) {
+      if (!parcial && c.obrigatorio) throw new ErroPublico(400, `Preencha: ${c.rotulo}.`);
+      continue;
+    }
+    let valor;
+    try { valor = TIPOS[c.tipo](entrada[nome], c); } catch { throw new ErroPublico(400, `Confira o campo "${c.rotulo}".`); }
+    if (c.obrigatorio && (valor === null || valor === '')) throw new ErroPublico(400, `Preencha: ${c.rotulo}.`);
+    saida[nome] = valor;
+  }
+  return saida;
+}
+
+function exigirId(id) {
+  if (!RE_UUID.test(String(id))) throw new ErroPublico(404, 'Registro não encontrado.');
+  return id;
+}
+
+// --- 7b. CRUD genérico (serve para várias tabelas parecidas) ---------
+function crud({ rota, tabela, campos, ordem = [], listar = true, aoExcluir }) {
+  const base = `/api/lucy/${rota}`;
+  if (listar) {
+    app.get(base, ...soLucy, async (req, res) => {
+      let consulta = banco.from(tabela).select('*');
+      for (const [coluna, crescente = true] of ordem) consulta = consulta.order(coluna, { ascending: crescente });
+      res.json(await q(consulta));
+    });
+  }
+  app.post(base, ...soLucy, async (req, res) => {
+    const dados = limparDados(req.body, campos);
+    res.status(201).json(await q(banco.from(tabela).insert(dados).select('*').single()));
+  });
+  app.patch(`${base}/:id`, ...soLucy, async (req, res) => {
+    const id = exigirId(req.params.id);
+    const dados = limparDados(req.body, campos, true);
+    if (!Object.keys(dados).length) throw new ErroPublico(400, 'Nada para alterar.');
+    const r = await q(banco.from(tabela).update(dados).eq('id', id).select('*'));
+    if (!r.length) throw new ErroPublico(404, 'Registro não encontrado.');
+    res.json(r[0]);
+  });
+  app.delete(`${base}/:id`, ...soLucy, async (req, res) => {
+    const id = exigirId(req.params.id);
+    if (aoExcluir) {
+      const alternativa = await aoExcluir(id);
+      if (alternativa) return res.json(alternativa);
+    }
+    const r = await q(banco.from(tabela).delete().eq('id', id).select('id'));
+    if (!r.length) throw new ErroPublico(404, 'Registro não encontrado.');
+    res.json({ excluido: true });
+  });
+}
+
+// --- 7c. Serviços ----------------------------------------------------
+crud({
+  rota: 'servicos', tabela: 'servicos', ordem: [['ordem'], ['nome']],
+  campos: {
+    nome: { tipo: 'texto', max: 80, obrigatorio: true, rotulo: 'Nome' },
+    descricao: { tipo: 'texto', max: 200, rotulo: 'Descrição' },
+    duracao_min: { tipo: 'inteiro', min: 5, max: 600, obrigatorio: true, rotulo: 'Duração (minutos)' },
+    preco: { tipo: 'dinheiro', obrigatorio: true, rotulo: 'Preço' },
+    retorno_dias: { tipo: 'inteiro', min: 1, max: 730, rotulo: 'Retorno (dias)' },
+    ordem: { tipo: 'inteiro', min: 0, max: 999, padrao: 0, rotulo: 'Ordem' },
+    ativo: { tipo: 'bool', rotulo: 'Ativo' },
+  },
+  // Serviço já usado em algum atendimento é DESATIVADO (não some do histórico).
+  aoExcluir: async (id) => {
+    const usos = await q(banco.from('agendamento_servicos').select('id').eq('servico_id', id));
+    if (!usos.length) return null;
+    await q(banco.from('servicos').update({ ativo: false }).eq('id', id));
+    return { desativado: true, mensagem: 'Este serviço já foi usado em atendimentos, então foi desativado (não aparece mais para as clientes) em vez de apagado.' };
+  },
+});
+
+// --- 7d. Promoções e dias especiais ----------------------------------
+crud({
+  rota: 'promocoes', tabela: 'promocoes', ordem: [['criado_em', false]],
+  campos: {
+    titulo: { tipo: 'texto', max: 80, obrigatorio: true, rotulo: 'Título' },
+    descricao: { tipo: 'texto', max: 400, rotulo: 'Descrição' },
+    valida_ate: { tipo: 'data', rotulo: 'Válida até' },
+    ativa: { tipo: 'bool', rotulo: 'Ativa' },
+  },
+});
+
+crud({
+  rota: 'dias-especiais', tabela: 'dias_especiais', ordem: [['data']],
+  campos: {
+    data: { tipo: 'data', obrigatorio: true, rotulo: 'Data' },
+    tipo: { tipo: 'opcao', opcoes: ['fechado', 'horario_especial'], obrigatorio: true, rotulo: 'Tipo' },
+    abre: { tipo: 'hora', rotulo: 'Abre' },
+    fecha: { tipo: 'hora', rotulo: 'Fecha' },
+    motivo: { tipo: 'texto', max: 120, rotulo: 'Motivo' },
+  },
+});
+
+// --- 7e. Horários da semana (os 7 dias de uma vez) -------------------
+app.get('/api/lucy/horarios', ...soLucy, async (req, res) => {
+  res.json(await q(banco.from('horarios_funcionamento').select('*').order('dia_semana')));
+});
+app.put('/api/lucy/horarios', ...soLucy, async (req, res) => {
+  const dias = req.body;
+  if (!Array.isArray(dias) || dias.length !== 7) throw new ErroPublico(400, 'Envie os 7 dias da semana.');
+  const campos = {
+    trabalha: { tipo: 'bool', rotulo: 'Trabalha' },
+    abre: { tipo: 'hora', rotulo: 'Abre' }, fecha: { tipo: 'hora', rotulo: 'Fecha' },
+    pausa_inicio: { tipo: 'hora', rotulo: 'Início da pausa' }, pausa_fim: { tipo: 'hora', rotulo: 'Fim da pausa' },
+  };
+  const limpos = dias.map((d, i) => {
+    const x = limparDados(d, campos);
+    const nome = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'][i];
+    if (x.trabalha && (!x.abre || !x.fecha || x.abre >= x.fecha)) throw new ErroPublico(400, `Confira o horário de ${nome}: abre antes de fechar?`);
+    if (!x.trabalha) Object.assign(x, { abre: null, fecha: null, pausa_inicio: null, pausa_fim: null });
+    if (!!x.pausa_inicio !== !!x.pausa_fim || (x.pausa_inicio && x.pausa_inicio >= x.pausa_fim)) {
+      throw new ErroPublico(400, `Confira a pausa de ${nome}: preencha início e fim, com início antes do fim.`);
+    }
+    return x;
+  });
+  for (let i = 0; i < 7; i++) await q(banco.from('horarios_funcionamento').update(limpos[i]).eq('dia_semana', i));
+  res.json(await q(banco.from('horarios_funcionamento').select('*').order('dia_semana')));
+});
+
+// --- 7f. Configurações do salão --------------------------------------
+const CAMPOS_CONFIG = {
+  nome_salao: { tipo: 'texto', max: 80, obrigatorio: true, rotulo: 'Nome do salão' },
+  endereco: { tipo: 'texto', max: 200, rotulo: 'Endereço' },
+  whatsapp_lucy: { tipo: 'whatsapp', rotulo: 'WhatsApp do salão' },
+  email_lucy: { tipo: 'email', rotulo: 'E-mail' },
+  chave_pix: { tipo: 'texto', max: 120, rotulo: 'Chave Pix' },
+  nome_recebedor_pix: { tipo: 'texto', max: 25, rotulo: 'Nome no Pix' },
+  cidade_pix: { tipo: 'texto', max: 15, rotulo: 'Cidade no Pix' },
+  retorno_momento: { tipo: 'opcao', opcoes: ['ao_finalizar', 'apos_pagamento'], rotulo: 'Quando oferecer retorno' },
+  intervalo_agenda_min: { tipo: 'inteiro', min: 10, max: 120, padrao: 30, rotulo: 'Intervalo da agenda' },
+  antecedencia_min_horas: { tipo: 'inteiro', min: 0, max: 168, padrao: 2, rotulo: 'Antecedência mínima' },
+  antecedencia_cancelamento_horas: { tipo: 'inteiro', min: 0, max: 168, padrao: 0, rotulo: 'Antecedência para cancelar' },
+  dias_a_frente: { tipo: 'inteiro', min: 1, max: 180, padrao: 45, rotulo: 'Dias à frente' },
+  codigo_avon: { tipo: 'texto', max: 40, rotulo: 'Código Avon' }, link_avon: { tipo: 'texto', max: 300, rotulo: 'Link Avon' },
+  codigo_natura: { tipo: 'texto', max: 40, rotulo: 'Código Natura' }, link_natura: { tipo: 'texto', max: 300, rotulo: 'Link Natura' },
+  codigo_hinode: { tipo: 'texto', max: 40, rotulo: 'Código Hinode' }, link_hinode: { tipo: 'texto', max: 300, rotulo: 'Link Hinode' },
+};
+app.get('/api/lucy/configuracoes', ...soLucy, async (req, res) => res.json(await lerConfiguracoes()));
+app.patch('/api/lucy/configuracoes', ...soLucy, async (req, res) => {
+  const dados = limparDados(req.body, CAMPOS_CONFIG, true);
+  if (!Object.keys(dados).length) throw new ErroPublico(400, 'Nada para alterar.');
+  dados.atualizado_em = new Date().toISOString();
+  res.json(await q(banco.from('configuracoes').update(dados).eq('id', 1).select('*').single()));
+});
+
+// --- 7g. Clientes (fichas) -------------------------------------------
+const CAMPOS_CLIENTE = {
+  nome: { tipo: 'texto', max: 80, obrigatorio: true, rotulo: 'Nome' },
+  whatsapp: { tipo: 'whatsapp', obrigatorio: true, rotulo: 'WhatsApp' },
+  email: { tipo: 'email', rotulo: 'E-mail' },
+  data_nascimento: { tipo: 'data', rotulo: 'Data de nascimento' },
+  alergias: { tipo: 'texto', max: 500, rotulo: 'Alergias' },
+  observacoes: { tipo: 'texto', max: 2000, rotulo: 'Anotações' },
+  necessidades_especificas: { tipo: 'texto', max: 500, rotulo: 'Necessidades específicas' },
+  aceita_lembrete_email: { tipo: 'bool', rotulo: 'Aceita lembrete por e-mail' },
+};
+crud({ rota: 'clientes', tabela: 'clientes', campos: CAMPOS_CLIENTE, listar: false });
+
+app.get('/api/lucy/clientes', ...soLucy, async (req, res) => {
+  const lista = await q(banco.from('clientes').select('id, nome, whatsapp, email').order('nome'));
+  const busca = String(req.query.busca ?? '').trim().toLowerCase();
+  const soNumeros = busca.replace(/\D/g, '');
+  res.json(busca ? lista.filter((c) =>
+    c.nome.toLowerCase().includes(busca) || (soNumeros.length >= 3 && c.whatsapp.includes(soNumeros))) : lista);
+});
+
+// Junta cliente e serviços em cada agendamento (para as telas da Lucy).
+async function completarAgendamentos(lista) {
+  if (!lista.length) return [];
+  const idsClientes = [...new Set(lista.map((a) => a.cliente_id))];
+  const [clientes, itens] = await Promise.all([
+    q(banco.from('clientes').select('id, nome, whatsapp, alergias, necessidades_especificas').in('id', idsClientes)),
+    q(banco.from('agendamento_servicos').select('agendamento_id, servico_id, nome, preco, duracao_min').in('agendamento_id', lista.map((a) => a.id))),
+  ]);
+  return lista.map((a) => ({
+    ...a,
+    valor_total: Number(a.valor_total),
+    cliente: clientes.find((c) => c.id === a.cliente_id) ?? null,
+    servicos: itens.filter((i) => i.agendamento_id === a.id).map((i) => ({ ...i, preco: Number(i.preco) })),
+  }));
+}
+
+app.get('/api/lucy/clientes/:id', ...soLucy, async (req, res) => {
+  const id = exigirId(req.params.id);
+  const cliente = await q(banco.from('clientes').select('*').eq('id', id).maybeSingle());
+  if (!cliente) throw new ErroPublico(404, 'Cliente não encontrada.');
+  const [agendamentos, historico] = await Promise.all([
+    q(banco.from('agendamentos').select('*').eq('cliente_id', id).order('inicio', { ascending: false })),
+    q(banco.from('historico_atendimentos').select('*').eq('cliente_id', id).order('data', { ascending: false })),
+  ]);
+  res.json({ ...cliente, agendamentos: await completarAgendamentos(agendamentos), historico });
+});
+
+// --- 7h. Histórico de atendimentos (dentro da ficha) -----------------
+const CAMPOS_HISTORICO = {
+  data: { tipo: 'data', obrigatorio: true, rotulo: 'Data' },
+  servicos_realizados: { tipo: 'texto', max: 300, rotulo: 'Serviços realizados' },
+  tintura_utilizada: { tipo: 'texto', max: 200, rotulo: 'Tintura utilizada' },
+  tintura_quantidade: { tipo: 'texto', max: 80, rotulo: 'Quantidade de tintura' },
+  anotacoes: { tipo: 'texto', max: 2000, rotulo: 'Anotações' },
+};
+app.post('/api/lucy/clientes/:id/historico', ...soLucy, async (req, res) => {
+  const clienteId = exigirId(req.params.id);
+  const dados = limparDados(req.body, CAMPOS_HISTORICO);
+  res.status(201).json(await q(banco.from('historico_atendimentos').insert({ ...dados, cliente_id: clienteId }).select('*').single()));
+});
+crud({ rota: 'historico', tabela: 'historico_atendimentos', campos: CAMPOS_HISTORICO, listar: false });
+
+// --- 7i. Agendamentos ------------------------------------------------
+// VER: agenda de um período (?de=AAAA-MM-DD&ate=AAAA-MM-DD) ou só os pedidos novos (?status=solicitado)
+app.get('/api/lucy/agendamentos', ...soLucy, async (req, res) => {
+  let consulta = banco.from('agendamentos').select('*');
+  if (req.query.status) consulta = consulta.eq('status', String(req.query.status));
+  if (req.query.de) {
+    if (!dataValida(String(req.query.de))) throw new ErroPublico(400, 'Data inválida.');
+    consulta = consulta.gte('inicio', instante(String(req.query.de), 0).toISOString());
+  }
+  if (req.query.ate) {
+    if (!dataValida(String(req.query.ate))) throw new ErroPublico(400, 'Data inválida.');
+    consulta = consulta.lt('inicio', instante(somarDias(String(req.query.ate), 1), 0).toISOString());
+  }
+  res.json(await completarAgendamentos(await q(consulta.order('inicio'))));
+});
+
+async function agendamentoCompleto(id) {
+  const a = await q(banco.from('agendamentos').select('*').eq('id', id).maybeSingle());
+  if (!a) throw new ErroPublico(404, 'Agendamento não encontrado.');
+  return (await completarAgendamentos([a]))[0];
+}
+
+// Define início e fim a partir do que a Lucy enviou (fim opcional = soma das durações).
+function periodo(inicioEnviado, fimEnviado, duracao) {
+  const ini = Date.parse(String(inicioEnviado ?? ''));
+  if (Number.isNaN(ini)) throw new ErroPublico(400, 'Informe o dia e a hora de início.');
+  const fim = fimEnviado ? Date.parse(String(fimEnviado)) : ini + duracao * UM_MINUTO;
+  if (Number.isNaN(fim) || fim <= ini) throw new ErroPublico(400, 'O horário de término precisa ser depois do início.');
+  if (fim - ini > 12 * 60 * UM_MINUTO) throw new ErroPublico(400, 'Confira o horário: passou de 12 horas.');
+  return { inicio: new Date(ini).toISOString(), fim: new Date(fim).toISOString() };
+}
+
+// CRIAR: a Lucy marca um horário (ex.: cliente que ligou). Já entra CONFIRMADO.
+app.post('/api/lucy/agendamentos', ...soLucy, async (req, res) => {
+  const b = req.body ?? {};
+  let clienteId = b.cliente_id ? exigirId(b.cliente_id) : null;
+  if (!clienteId) {
+    const nova = limparDados(b.cliente ?? {}, { nome: CAMPOS_CLIENTE.nome, whatsapp: CAMPOS_CLIENTE.whatsapp });
+    const existente = await q(banco.from('clientes').select('id').eq('whatsapp', nova.whatsapp).maybeSingle());
+    clienteId = existente?.id ?? (await q(banco.from('clientes').insert(nova).select('id').single())).id;
+  }
+  const { lista, duracao, total } = await servicosEscolhidos(b.servicos);
+  const { inicio, fim } = periodo(b.inicio, b.fim, duracao);
+  const novo = await q(banco.from('agendamentos').insert({
+    cliente_id: clienteId, inicio, fim, status: 'agendado', origem: 'lucy',
+    confirmado_em: new Date().toISOString(), valor_total: total,
+    observacao_cliente: texto(b.observacao, 500) || null,
+  }).select('id').single());
+  await gravarServicosDoPedido(novo.id, lista);
+  res.status(201).json(await agendamentoCompleto(novo.id));
+});
+
+// EDITAR: muda horário, término, serviços ou recado.
+app.patch('/api/lucy/agendamentos/:id', ...soLucy, async (req, res) => {
+  const atual = await agendamentoCompleto(exigirId(req.params.id));
+  const b = req.body ?? {};
+  const mudar = {};
+  let novaLista = null;
+  let duracao = atual.servicos.reduce((s, x) => s + x.duracao_min, 0);
+  if (Array.isArray(b.servicos)) {
+    const e = await servicosEscolhidos(b.servicos);
+    novaLista = e.lista; duracao = e.duracao; mudar.valor_total = e.total;
+  }
+  if (b.inicio || b.fim) Object.assign(mudar, periodo(b.inicio ?? atual.inicio, b.fim, duracao));
+  else if (novaLista) Object.assign(mudar, periodo(atual.inicio, null, duracao));
+  if ('observacao' in b) mudar.observacao_cliente = texto(b.observacao, 500) || null;
+  if (!Object.keys(mudar).length) throw new ErroPublico(400, 'Nada para alterar.');
+  await q(banco.from('agendamentos').update(mudar).eq('id', atual.id));
+  if (novaLista) {
+    await q(banco.from('agendamento_servicos').delete().eq('agendamento_id', atual.id));
+    await gravarServicosDoPedido(atual.id, novaLista);
+  }
+  res.json(await agendamentoCompleto(atual.id));
+});
+
+// AÇÕES: confirmar, recusar, cancelar, concluir, faltou.
+const ACOES = {
+  confirmar: { de: ['solicitado'], para: 'agendado', extra: () => ({ confirmado_em: new Date().toISOString() }) },
+  recusar: { de: ['solicitado'], para: 'recusado' },
+  cancelar: { de: ['solicitado', 'agendado'], para: 'cancelado', extra: () => ({ cancelado_por: 'lucy' }) },
+  concluir: { de: ['agendado'], para: 'concluido', extra: () => ({ concluido_em: new Date().toISOString() }) },
+  faltou: { de: ['agendado'], para: 'faltou' },
+};
+app.post('/api/lucy/agendamentos/:id/:acao', ...soLucy, async (req, res) => {
+  const acao = ACOES[req.params.acao];
+  if (!acao) throw new ErroPublico(404, 'Ação desconhecida.');
+  const atual = await agendamentoCompleto(exigirId(req.params.id));
+  if (!acao.de.includes(atual.status)) {
+    throw new ErroPublico(409, `Não dá para ${req.params.acao} um agendamento com situação "${STATUS_TEXTO[atual.status]}".`);
+  }
+  await q(banco.from('agendamentos').update({ status: acao.para, ...(acao.extra?.() ?? {}) }).eq('id', atual.id));
+  res.json(await agendamentoCompleto(atual.id));
+});
+
+// EXCLUIR de vez (o normal é cancelar; isto apaga o registro).
+app.delete('/api/lucy/agendamentos/:id', ...soLucy, async (req, res) => {
+  const r = await q(banco.from('agendamentos').delete().eq('id', exigirId(req.params.id)).select('id'));
+  if (!r.length) throw new ErroPublico(404, 'Agendamento não encontrado.');
+  res.json({ excluido: true });
+});
+
+// --- 7j. Avaliações (ver e excluir) ----------------------------------
+app.get('/api/lucy/avaliacoes', ...soLucy, async (req, res) => {
+  const lista = await q(banco.from('avaliacoes').select('*').order('criado_em', { ascending: false }));
+  if (!lista.length) return res.json([]);
+  const ags = await q(banco.from('agendamentos').select('id, cliente_id, inicio').in('id', lista.map((a) => a.agendamento_id)));
+  const clientes = await q(banco.from('clientes').select('id, nome').in('id', [...new Set(ags.map((a) => a.cliente_id))]));
+  res.json(lista.map((av) => {
+    const ag = ags.find((a) => a.id === av.agendamento_id);
+    return { ...av, atendimento_em: ag?.inicio ?? null, cliente_nome: clientes.find((c) => c.id === ag?.cliente_id)?.nome ?? null };
+  }));
+});
+app.delete('/api/lucy/avaliacoes/:id', ...soLucy, async (req, res) => {
+  const r = await q(banco.from('avaliacoes').delete().eq('id', exigirId(req.params.id)).select('id'));
+  if (!r.length) throw new ErroPublico(404, 'Avaliação não encontrada.');
+  res.json({ excluido: true });
+});
+
+
+// ---------------------------------------------------------------------
+// 8. ERROS
 // ---------------------------------------------------------------------
 app.use('/api', (req, res) => res.status(404).json({ erro: 'Rota não encontrada.' }));
 
 app.use((err, req, res, _next) => {
   if (err.publico) return res.status(err.status).json({ erro: err.message });
   if (err.code === '23P01') {  // a trava "uma cliente por vez" do banco
-    return res.status(409).json({ erro: 'Esse horário acabou de ser ocupado. Escolha outro, por favor.' });
+    return res.status(409).json({ erro: 'Já existe um horário confirmado nesse período. Escolha outro horário.' });
+  }
+  if (err.code === '23505') {  // valor repetido (ex.: mesmo WhatsApp, mesmo nome de serviço, mesma data)
+    return res.status(409).json({ erro: 'Já existe um cadastro com esse dado (nome, WhatsApp ou data). Confira.' });
+  }
+  if (err.code === '23502') {  // campo obrigatório vazio
+    return res.status(400).json({ erro: 'Faltou preencher um campo obrigatório.' });
+  }
+  if (err.code === '23514') {  // regra do banco não atendida (ex.: horário especial sem horas)
+    return res.status(400).json({ erro: 'Algum dado não foi aceito. Confira os campos e tente de novo.' });
   }
   if (err.type === 'entity.parse.failed') return res.status(400).json({ erro: 'Dados em formato inválido.' });
   if (err.type === 'entity.too.large')   return res.status(413).json({ erro: 'Dados grandes demais.' });
@@ -560,7 +946,7 @@ app.use((err, req, res, _next) => {
 
 
 // ---------------------------------------------------------------------
-// 8. LIGAR O SERVIDOR
+// 9. LIGAR O SERVIDOR
 //    Na Vercel, ela mesma liga (usando o "export default").
 //    No computador: `npm start` e abra http://localhost:3000
 // ---------------------------------------------------------------------
