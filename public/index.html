@@ -52,8 +52,17 @@
       border: 1.5px solid var(--borda); background: #fff; color: var(--texto);
     }
     input:focus { border-color: var(--vinho); outline: 3px solid rgba(122, 59, 92, .18); }
-    .linha-senha { display: flex; gap: .5rem; }
-    .linha-senha input { flex: 1; }
+    /* Campo de senha com o "olhinho" dentro, à direita */
+    .linha-senha { position: relative; }
+    .linha-senha input { padding-right: 3.25rem; }
+    button.olhinho {
+      position: absolute; top: 50%; right: .35rem; transform: translateY(-50%);
+      width: 2.6rem; height: 2.6rem; min-height: 0; padding: 0;
+      display: grid; place-items: center;
+      background: transparent; border: none; border-radius: 8px; color: var(--texto-suave);
+    }
+    button.olhinho:hover { background: var(--rosa-claro); color: var(--vinho); }
+    button.olhinho svg { width: 1.4rem; height: 1.4rem; }
     button {
       font: inherit; font-weight: 600; cursor: pointer; border-radius: 10px;
       padding: .8rem 1.2rem; min-height: 3rem; border: 1.5px solid var(--vinho);
@@ -116,6 +125,16 @@
     salvar(s) { try { localStorage.setItem(this.CHAVE, JSON.stringify(s)); } catch {} },
     apagar() { try { localStorage.removeItem(this.CHAVE); } catch {} },
   };
+
+  // Ícones do "olhinho" da senha (desenhos simples, sem depender de nada externo)
+  const ICONE_OLHO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+  const ICONE_OLHO_FECHADO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+    stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+    <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
 
   class ErroApi extends Error {
     constructor(mensagem, status) { super(mensagem); this.status = status; }
@@ -225,7 +244,7 @@
         <label for="senha">Senha</label>
         <div class="linha-senha">
           <input id="senha" type="password" autocomplete="current-password" required>
-          <button type="button" class="secundario" id="ver-senha" aria-pressed="false">Mostrar</button>
+          <button type="button" class="olhinho" id="ver-senha" aria-label="Mostrar senha" title="Mostrar senha">${ICONE_OLHO}</button>
         </div>
         <button type="submit" class="botao-largo" id="entrar">Entrar</button>
         <p class="mensagem erro" id="msg" role="alert">${esc(aviso)}</p>
@@ -233,11 +252,15 @@
 
     const $senha = document.getElementById('senha');
     const $ver = document.getElementById('ver-senha');
+    // Olhinho aberto = toque para ver a senha; olhinho riscado = toque para esconder.
     $ver.onclick = () => {
-      const mostrando = $senha.type === 'text';
-      $senha.type = mostrando ? 'password' : 'text';
-      $ver.textContent = mostrando ? 'Mostrar' : 'Esconder';
-      $ver.setAttribute('aria-pressed', String(!mostrando));
+      const vaiMostrar = $senha.type === 'password';
+      $senha.type = vaiMostrar ? 'text' : 'password';
+      $ver.innerHTML = vaiMostrar ? ICONE_OLHO_FECHADO : ICONE_OLHO;
+      const rotulo = vaiMostrar ? 'Esconder senha' : 'Mostrar senha';
+      $ver.setAttribute('aria-label', rotulo);
+      $ver.title = rotulo;
+      $senha.focus();
     };
 
     document.getElementById('form-login').onsubmit = async (ev) => {
