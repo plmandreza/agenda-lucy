@@ -247,6 +247,16 @@
       .quatro-colunas { grid-template-columns: 1fr 1fr; }
     }
 
+    .catalogo { padding: .85rem 0; border-top: 1px solid var(--borda); }
+    .catalogo:first-of-type { border-top: none; padding-top: .25rem; }
+    .codigo { font-size: 1.05rem; color: var(--vinho-escuro); letter-spacing: .5px; margin-right: .35rem; }
+    .link-catalogos { display: block; text-align: center; margin-top: .9rem; font-weight: 600; }
+    .lista-links { display: grid; gap: .5rem; margin: .5rem 0 1rem; }
+    .lista-links .botao { justify-content: flex-start; }
+    .linha-lembrete { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .8rem 1rem; margin-bottom: .6rem; }
+    .dialogo { max-height: calc(100vh - 2rem); overflow-y: auto; }
+    .dialogo h2 { margin-top: 0; }
+
     /* Texto só para leitores de tela (acessibilidade) */
     .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   </style>
@@ -323,6 +333,29 @@
   const diaDaSemana = (data) => new Date(`${data}T12:00:00-03:00`).getUTCDay();
   const dataNoFuso = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: FUSO }).format(new Date(iso));  // "AAAA-MM-DD"
   const NOMES_DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+
+  // WhatsApp por "link pronto": abre o app com a mensagem escrita; a pessoa só toca em Enviar.
+  const zapCom = (numero, texto) => `https://wa.me/${encodeURIComponent(numero)}?text=${encodeURIComponent(texto)}`;
+  const enderecoSite = () => `${location.origin}${location.pathname}`;
+  const quandoTexto = (a) => `${fmt.dataLonga(a.inicio)}, às ${fmt.hora(a.inicio)}`;
+  const servicosTexto = (a) => a.servicos.map((x) => x.nome).join(' + ');
+  const ICONE_ZAP = '💬';
+
+  // Copia um texto. Se o navegador não deixar, usa um jeito alternativo.
+  async function copiarTexto(texto) {
+    try {
+      await Promise.race([navigator.clipboard.writeText(texto), new Promise((_, nao) => setTimeout(nao, 1500))]);
+      return true;
+    } catch {
+      const t = document.createElement('textarea');
+      t.value = texto; t.setAttribute('readonly', ''); t.style.position = 'fixed'; t.style.opacity = '0';
+      document.body.appendChild(t); t.select();
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch {}
+      t.remove();
+      return ok;
+    }
+  }
 
   // Ícones do "olhinho" da senha (desenhos simples, sem depender de nada externo)
   const ICONE_OLHO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -422,6 +455,23 @@
 
     const zap = d.salao.whatsapp
       ? `<p><a href="https://wa.me/${esc(d.salao.whatsapp)}" target="_blank" rel="noopener">Falar com a Lucy no WhatsApp</a></p>` : '';
+    // Catálogos de revenda (Avon, Natura, Hinode) — só os que a Lucy preencheu
+    const catalogos = (d.catalogos ?? []).length ? `
+      <section class="cartao" id="catalogos" aria-labelledby="t-catalogos">
+        <h2 id="t-catalogos">Catálogos</h2>
+        <p class="suave">A Lucy também é consultora. Veja os catálogos e faça seu pedido com ela.</p>
+        ${d.catalogos.map((c) => `
+          <div class="catalogo">
+            <p class="quando" style="margin:0">${esc(c.marca)}</p>
+            ${c.codigo ? `<p class="suave" style="margin:.15rem 0 .5rem">Código da consultora: <strong class="codigo">${esc(c.codigo)}</strong>
+              <button class="secundario pequeno" data-copiar-codigo="${esc(c.codigo)}" aria-label="Copiar código ${esc(c.marca)}">Copiar</button></p>` : ''}
+            <div class="acoes-item" style="margin-top:.25rem">
+              ${c.link ? `<a class="botao secundario pequeno" href="${esc(c.link)}" target="_blank" rel="noopener">Ver catálogo ${esc(c.marca)}</a>` : ''}
+              ${d.salao.whatsapp ? `<a class="botao secundario pequeno" target="_blank" rel="noopener"
+                href="${esc(zapCom(d.salao.whatsapp, `Olá, Lucy! Vi o catálogo ${c.marca} e quero fazer um pedido.`))}">${ICONE_ZAP} Pedir pelo WhatsApp</a>` : ''}
+            </div>
+          </div>`).join('')}
+      </section>` : '';
     const promocoes = d.promocoes.map((p) => `
       <div class="cartao destaque">
         <p class="passos" style="margin:0">Promoção</p>
@@ -435,6 +485,8 @@
         <h1>Que bom ter você aqui!</h1>
         <p>Escolha os serviços, veja os horários livres e faça o seu pedido. A Lucy confirma pra você.</p>
         <a class="botao botao-largo" href="#/agendar">Pedir um horário</a>
+        ${catalogos ? `<a class="link-catalogos" href="#catalogos" data-rolar="catalogos">Ver ${d.catalogos.length > 1 ? 'os catálogos' : 'o catálogo'}
+          ${esc(d.catalogos.map((c) => c.marca).join(', ').replace(/, ([^,]*)$/, ' e $1'))} ↓</a>` : ''}
       </section>
       ${promocoes}
       <section class="cartao" aria-labelledby="t-servicos">
@@ -448,6 +500,7 @@
             </li>`).join('')}
         </ul>
       </section>
+      ${catalogos}
       <section class="cartao" aria-labelledby="t-contato">
         <h2 id="t-contato">Funcionamento e contato</h2>
         <p>${resumoDoFuncionamento(d.horarios)}</p>
@@ -455,6 +508,15 @@
         ${zap}
       </section>
       <p class="sistema" id="sistema">Verificando o sistema…</p>`;
+
+    // Botões de copiar o código de consultora e atalho para os catálogos
+    $app.querySelectorAll('[data-copiar-codigo]').forEach((b) => {
+      b.onclick = async () => { b.textContent = await copiarTexto(b.dataset.copiarCodigo) ? 'Copiado!' : 'Copie o código'; };
+    });
+    $app.querySelector('[data-rolar]')?.addEventListener('click', (e) => {
+      e.preventDefault();  // não troca o "#" do endereço (que escolhe a tela)
+      document.getElementById(e.currentTarget.dataset.rolar)?.scrollIntoView({ behavior: 'smooth' });
+    });
 
     // Verificação discreta (útil para conferir se servidor e banco estão no ar).
     try {
@@ -478,7 +540,7 @@
     ag = {
       passo: 1, servicos: new Set(), data: null, inicio: null, horarios: [], remarcar: null, pedido: null,
       ...guardado.ler('lucy.cliente', {}),  // nome, whatsapp e e-mail usados da última vez neste aparelho
-      necessidades: '', observacao: '', lembrete_email: true,
+      necessidades: '', observacao: '',
     };
     if (remarcar) {
       try {
@@ -664,12 +726,9 @@
         <input id="nome" autocomplete="name" maxlength="80" required value="${esc(ag.nome)}">
         <label for="whatsapp">WhatsApp <span class="dica">Com DDD. É por ele que a Lucy fala com você.</span></label>
         <input id="whatsapp" type="tel" inputmode="tel" autocomplete="tel" placeholder="(00) 00000-0000" required value="${esc(ag.whatsapp)}">
-        <label for="email">E-mail <span class="dica">Opcional. Para receber lembretes.</span></label>
+        <label for="email">E-mail <span class="dica">Opcional.</span></label>
         <input id="email" type="email" inputmode="email" autocomplete="email" maxlength="120" value="${esc(ag.email)}">
-        <label class="opcao" style="margin-top:.6rem">
-          <input type="checkbox" id="lembrete" ${ag.lembrete_email ? 'checked' : ''}>
-          <span class="info">Quero receber lembretes por e-mail</span>
-        </label>
+
         <label for="necessidades">Alguma necessidade específica?
           <span class="dica">Opcional. Por exemplo: acessibilidade ou mobilidade reduzida, sensibilidade a cheiros ou barulho,
           gestação, alergias. Conte o que for importante para a Lucy te receber bem.</span></label>
@@ -688,7 +747,6 @@
       ag.nome = document.getElementById('nome').value.trim();
       ag.whatsapp = document.getElementById('whatsapp').value.trim();
       ag.email = document.getElementById('email').value.trim();
-      ag.lembrete_email = document.getElementById('lembrete').checked;
       ag.necessidades = document.getElementById('necessidades').value.trim();
       ag.observacao = document.getElementById('observacao').value.trim();
     };
@@ -747,7 +805,7 @@
           });
         } else {
           p = await api('/api/publico/pedidos', { metodo: 'POST', corpo: {
-            nome: ag.nome, whatsapp: ag.whatsapp, email: ag.email, lembrete_email: ag.lembrete_email,
+            nome: ag.nome, whatsapp: ag.whatsapp, email: ag.email,
             necessidades: ag.necessidades, observacao: ag.observacao,
             servicos: [...ag.servicos], inicio: ag.inicio,
           } });
@@ -779,8 +837,20 @@
     }
     meusPedidos.adicionar(p.token);
     atualizarNav();
+    const salao = await carregarSalao().catch(() => null);
 
     const link = `${location.origin}${location.pathname}#/pedido/${p.token}`;
+    // Mensagem pronta para a cliente avisar a Lucy pelo WhatsApp
+    const tipoAviso = params.get('novo') ? 'novo' : params.get('remarcado') ? 'remarcado' : params.get('cancelado') ? 'cancelado' : '';
+    const textoParaLucy = {
+      novo: `Olá, Lucy! Aqui é ${p.primeiro_nome}. Acabei de pedir um horário pelo site: ${servicosTexto(p)}, ${quandoTexto(p)}. ${link}`,
+      remarcado: `Olá, Lucy! Aqui é ${p.primeiro_nome}. Remarquei meu horário pelo site para ${quandoTexto(p)} (${servicosTexto(p)}). ${link}`,
+      cancelado: `Olá, Lucy! Aqui é ${p.primeiro_nome}. Precisei cancelar meu horário de ${quandoTexto(p)}. Desculpe!`,
+      '': `Olá, Lucy! Aqui é ${p.primeiro_nome}. Sobre o meu horário de ${quandoTexto(p)}: ${link}`,
+    }[tipoAviso];
+    const botaoZap = salao?.salao?.whatsapp
+      ? `<a class="botao ${tipoAviso ? '' : 'secundario'} botao-largo" href="${esc(zapCom(salao.salao.whatsapp, textoParaLucy))}"
+          target="_blank" rel="noopener">${ICONE_ZAP} ${tipoAviso ? 'Avisar a Lucy no WhatsApp' : 'Falar com a Lucy no WhatsApp'}</a>` : '';
     const aviso = params.get('novo')
       ? `<p class="mensagem sucesso" role="status"><strong>Pedido enviado, ${esc(p.primeiro_nome)}!</strong> A Lucy vai ver e confirmar o seu horário.</p>`
       : params.get('remarcado')
@@ -790,6 +860,7 @@
     $app.innerHTML = `
       <button class="voltar" data-voltar="#/">← Voltar</button>
       ${aviso}
+      ${tipoAviso ? `<div style="margin:-.25rem 0 1.25rem">${botaoZap}</div>` : ''}
       <div class="cartao">
         <span class="selo ${esc(p.status)}">${esc(p.status_texto)}</span>
         <p class="quando">${esc(fmt.dataLonga(p.inicio))}</p>
@@ -805,6 +876,7 @@
             <button class="perigo" id="cancelar">Cancelar</button>
           </div>
           <div id="confirmar"></div>` : ''}
+        ${!tipoAviso && botaoZap ? `<div style="margin-top:.75rem">${botaoZap}</div>` : ''}
       </div>
       <div class="cartao">
         <h2>Seu link pessoal</h2>
@@ -819,8 +891,7 @@
 
     document.getElementById('copiar').onclick = async () => {
       const $b = document.getElementById('copiar');
-      try { await navigator.clipboard.writeText(link); } catch { document.getElementById('link').select(); document.execCommand?.('copy'); }
-      $b.textContent = 'Copiado!';
+      $b.textContent = await copiarTexto(link) ? 'Copiado!' : 'Selecione e copie';
       setTimeout(() => { $b.textContent = 'Copiar'; }, 2000);
     };
 
@@ -895,14 +966,15 @@
   // Mensagem rápida no topo do painel (some sozinha).
   // Fica guardada por alguns segundos, para sobreviver quando a tela é redesenhada.
   let ultimoAviso = null;
-  function avisar(mensagem, tipo = 'sucesso') {
-    ultimoAviso = { mensagem, tipo, ate: Date.now() + 6000 };
+  // "extra" é HTML montado pelo próprio painel (ex.: botão do WhatsApp).
+  function avisar(mensagem, tipo = 'sucesso', extra = '') {
+    ultimoAviso = { mensagem, tipo, extra, ate: Date.now() + (extra ? 20000 : 6000) };
     mostrarAviso();
   }
   function mostrarAviso() {
     const $a = document.getElementById('aviso');
     if (!$a || !ultimoAviso || Date.now() > ultimoAviso.ate) return;
-    $a.innerHTML = `<p class="mensagem ${ultimoAviso.tipo}">${esc(ultimoAviso.mensagem)}</p>`;
+    $a.innerHTML = `<div class="mensagem ${ultimoAviso.tipo}">${esc(ultimoAviso.mensagem)}${ultimoAviso.extra ?? ''}</div>`;
     $a.scrollIntoView({ block: 'nearest' });
     clearTimeout(avisar.t);
     avisar.t = setTimeout(() => { $a.innerHTML = ''; ultimoAviso = null; }, ultimoAviso.ate - Date.now());
@@ -926,6 +998,44 @@
     });
   }
 
+  // Janelinha com conteúdo livre (lista de links do WhatsApp etc.) e botão Fechar.
+  function janela(tituloHtml, conteudoHtml) {
+    const fundo = document.createElement('div');
+    fundo.className = 'fundo-dialogo';
+    fundo.innerHTML = `<div class="dialogo" role="dialog" aria-modal="true" aria-labelledby="jan-t">
+      <h2 id="jan-t">${tituloHtml}</h2>${conteudoHtml}
+      <button class="secundario botao-largo" data-fechar>Fechar</button></div>`;
+    document.body.appendChild(fundo);
+    const fechar = () => fundo.remove();
+    fundo.querySelector('[data-fechar]').onclick = fechar;
+    fundo.addEventListener('click', (e) => { if (e.target === fundo) fechar(); });
+    fundo.addEventListener('keydown', (e) => { if (e.key === 'Escape') fechar(); });
+    fundo.querySelector('a, button').focus();
+    return fundo;
+  }
+
+  // Mensagens prontas que a Lucy manda para as clientes.
+  let cfgPainel = null;  // dados do salão (endereço, WhatsApp da Lucy), lidos uma vez
+  function mensagemParaCliente(a, tipo, extra = {}) {
+    const nome = String(a.cliente?.nome ?? '').split(' ')[0];
+    const link = `${enderecoSite()}#/pedido/${a.token}`;
+    const marcar = `${enderecoSite()}#/agendar`;
+    const endereco = cfgPainel?.endereco ? `\nEndereço: ${cfgPainel.endereco}` : '';
+    return {
+      agendado: `Oi, ${nome}! Aqui é a Lucy 💜\nSeu horário está confirmado: ${quandoTexto(a)} (${servicosTexto(a)}).${endereco}\nPara ver, remarcar ou cancelar: ${link}`,
+      solicitado: `Oi, ${nome}! Aqui é a Lucy. Recebi seu pedido para ${quandoTexto(a)} (${servicosTexto(a)}). Já já te confirmo!`,
+      recusado: `Oi, ${nome}! Aqui é a Lucy. Infelizmente não vou conseguir te atender ${quandoTexto(a)}. Pode escolher outro horário por aqui? ${marcar}`,
+      cancelado: `Oi, ${nome}! Aqui é a Lucy. Seu horário de ${quandoTexto(a)} foi cancelado. Quando quiser, é só marcar de novo: ${marcar}`,
+      concluido: `Oi, ${nome}! Obrigada pela visita 💜 Quando quiser voltar, é só marcar: ${marcar}`,
+      faltou: `Oi, ${nome}! Aqui é a Lucy. Senti sua falta no horário de ${quandoTexto(a)}. Está tudo bem? Se quiser, marcamos outro: ${marcar}`,
+      lembrete: `Oi, ${nome}! Aqui é a Lucy 💜 Passando para lembrar do seu horário amanhã, às ${fmt.hora(a.inicio)} (${servicosTexto(a)}).${endereco}\nSe precisar remarcar: ${link}`,
+      atraso: `Oi, ${nome}! Aqui é a Lucy. Vou me atrasar uns ${extra.minutos} minutinhos para o seu horário das ${fmt.hora(a.inicio)}. Me desculpe! 💜`,
+      folga: `Oi, ${nome}! Aqui é a Lucy. Não vou poder atender no dia ${fmt.dataLonga(a.inicio)}${extra.motivo ? ` (${extra.motivo})` : ''}. Me desculpe! Vamos remarcar seu horário? ${link}`,
+      especial: `Oi, ${nome}! Aqui é a Lucy. No dia ${fmt.dataLonga(a.inicio)} vou atender das ${extra.abre} às ${extra.fecha}${extra.motivo ? ` (${extra.motivo})` : ''}. Seu horário é às ${fmt.hora(a.inicio)}. Se precisar remarcar: ${link}`,
+    }[tipo];
+  }
+  const linkZapCliente = (a, tipo, extra) => a.cliente?.whatsapp ? zapCom(a.cliente.whatsapp, mensagemParaCliente(a, tipo, extra)) : null;
+
   // --- Formulários genéricos: desenha os campos e lê o que foi digitado.
   function htmlCampos(campos, valores = {}, prefixo = 'f') {
     return campos.map((c) => {
@@ -945,6 +1055,7 @@
       } else {
         const tipo = { numero: 'number', data: 'date', hora: 'time', tel: 'tel', email: 'email' }[c.tipo] ?? 'text';
         if (c.tipo === 'hora') v = String(v).slice(0, 5);
+        if (c.tipo === 'tel' && v) v = zapBonito(v);  // 5511987654321 → (11) 98765-4321
         if (c.tipo === 'dinheiro' && v !== '') v = Number(v).toFixed(2).replace('.', ',');
         const extra = c.tipo === 'dinheiro' ? 'inputmode="decimal" placeholder="0,00"'
           : c.tipo === 'numero' ? `inputmode="numeric" min="${c.min ?? 0}" ${c.maxNum ? `max="${c.maxNum}"` : ''}`
@@ -1069,6 +1180,7 @@
     mostrarAviso();
 
     const $c = document.getElementById('conteudo');
+    if (!cfgPainel) cfgPainel = await painelApi('/configuracoes').catch(() => null);
     const telas = {
       pedidos: abaPedidos, agenda: abaAgenda, clientes: abaClientes, servicos: abaServicos,
       horarios: abaHorarios, promocoes: abaPromocoes, salao: abaSalao, avaliacoes: abaAvaliacoes,
@@ -1105,6 +1217,10 @@
         ${a.observacao_cliente ? `<p class="suave" style="white-space:pre-line;margin:.5rem 0 0">Recado: ${esc(a.observacao_cliente)}</p>` : ''}
         ${comAcoes ? `<div class="acoes-item">
           ${botoes.map(([acao, rotulo, classe]) => `<button class="pequeno ${classe}" data-acao="${acao}">${rotulo}</button>`).join('')}
+          ${linkZapCliente(a, a.status) ? `<a class="botao secundario pequeno" href="${esc(linkZapCliente(a, a.status))}" target="_blank" rel="noopener"
+            title="Abre o WhatsApp com a mensagem pronta">${ICONE_ZAP} WhatsApp</a>` : ''}
+          ${a.status === 'agendado' && dataNoFuso(a.inicio) === hojeNoSalao() && c.whatsapp
+            ? '<button class="secundario pequeno" data-acao="atraso">Vou atrasar</button>' : ''}
           <button class="secundario pequeno" data-acao="editar">Editar</button>
           <button class="perigo pequeno" data-acao="excluir">Excluir</button>
         </div>
@@ -1124,6 +1240,11 @@
         b.onclick = async () => {
           const acao = b.dataset.acao;
           if (acao === 'editar') return formularioAgendamento($card.querySelector('[data-form]'), a, depois);
+          if (acao === 'atraso') {
+            return janela(`Avisar ${esc(a.cliente?.nome)} do atraso`, `<p class="suave">Escolha quanto tempo. O WhatsApp abre com a mensagem pronta.</p>
+              <div class="lista-links">${[10, 15, 20, 30, 45].map((m) => `<a class="botao secundario" target="_blank" rel="noopener"
+                href="${esc(linkZapCliente(a, 'atraso', { minutos: m }))}">${m} minutos</a>`).join('')}</div>`);
+          }
           if (acao === 'excluir') {
             if (!await perguntar(`Excluir de vez o horário de <strong>${esc(a.cliente?.nome)}</strong>?
               <br><span class="suave">Dica: para manter o histórico, prefira "Cancelar".</span>`)) return;
@@ -1136,9 +1257,13 @@
                 { sim: acao === 'recusar' ? 'Sim, recusar' : 'Sim, cancelar' })) return;
           b.disabled = true;
           try {
-            await painelApi(`/agendamentos/${a.id}/${acao}`, { metodo: 'POST' });
+            const r = await painelApi(`/agendamentos/${a.id}/${acao}`, { metodo: 'POST' });
+            // Depois da ação: botão para avisar a cliente pelo WhatsApp (mensagem pronta)
+            const zap = linkZapCliente(r, r.status);
+            const extra = (zap && ['confirmar', 'recusar', 'cancelar'].includes(acao)
+              ? `<a class="botao pequeno" style="margin-top:.6rem;display:flex" href="${esc(zap)}" target="_blank" rel="noopener">${ICONE_ZAP} Avisar ${esc(r.cliente?.nome?.split(' ')[0])} no WhatsApp</a>` : '');
             avisar({ confirmar: 'Horário confirmado!', recusar: 'Pedido recusado.', cancelar: 'Horário cancelado.',
-              concluir: 'Atendimento concluído.', faltou: 'Marcado como falta.' }[acao]);
+              concluir: 'Atendimento concluído.', faltou: 'Marcado como falta.' }[acao], 'sucesso', extra);
             depois();
           } catch (e) { b.disabled = false; if (e.status === 401) throw e; avisar(e.message, 'erro'); }
         };
@@ -1231,11 +1356,13 @@
 
   // --- ABA: PEDIDOS (o que está esperando resposta)
   async function abaPedidos($c) {
-    const hoje = hojeNoSalao();
-    const [pedidos, deHoje] = await Promise.all([
+    const hoje = hojeNoSalao(), amanha = somarDias(hoje, 1);
+    const [pedidos, deHoje, deAmanha] = await Promise.all([
       painelApi('/agendamentos?status=solicitado'),
       painelApi(`/agendamentos?de=${hoje}&ate=${hoje}`),
+      painelApi(`/agendamentos?de=${amanha}&ate=${amanha}`),
     ]);
+    const lembrar = deAmanha.filter((a) => a.status === 'agendado');
     const confirmadosHoje = deHoje.filter((a) => a.status === 'agendado').length;
     $c.innerHTML = `
       <a class="cartao destaque resumo-hoje" href="#/painel/agenda">
@@ -1243,15 +1370,40 @@
         <span>Ver agenda →</span></a>
       <h2>Pedidos esperando resposta ${pedidos.length ? `(${pedidos.length})` : ''}</h2>
       <div id="lista-pedidos">${pedidos.length ? pedidos.map((a) => cartaoAgendamento(a, { comData: true })).join('')
-        : '<p class="cartao suave">Nenhum pedido esperando resposta. 🎉</p>'}</div>`;
+        : '<p class="cartao suave">Nenhum pedido esperando resposta. 🎉</p>'}</div>
+
+      <div class="linha-titulo" style="margin-top:1.5rem"><h2>Lembretes de amanhã ${lembrar.length ? `(${lembrar.length})` : ''}</h2></div>
+      <p class="suave">Toque em "Lembrar" para abrir o WhatsApp com a mensagem pronta.</p>
+      ${lembrar.length ? lembrar.map((a) => `
+        <div class="cartao item linha-lembrete">
+          <div><strong>${esc(fmt.hora(a.inicio))}</strong> · ${esc(a.cliente?.nome)}
+            <span class="suave" style="display:block">${esc(servicosTexto(a))}</span></div>
+          ${linkZapCliente(a, 'lembrete') ? `<a class="botao secundario pequeno" target="_blank" rel="noopener"
+            href="${esc(linkZapCliente(a, 'lembrete'))}">${ICONE_ZAP} Lembrar</a>` : ''}
+        </div>`).join('') : '<p class="cartao suave">Nenhum horário confirmado para amanhã.</p>'}
+
+`;
     ligarAgendamentos($c, pedidos, () => telaPainel('pedidos'));
+
   }
 
   // --- ABA: AGENDA (um dia por vez)
   async function abaAgenda($c, resto, params) {
     const dia = params.get('dia') && /^\d{4}-\d{2}-\d{2}$/.test(params.get('dia')) ? params.get('dia') : hojeNoSalao();
-    const lista = await painelApi(`/agendamentos?de=${dia}&ate=${dia}`);
+    const hoje = hojeNoSalao();
+    const [lista, semana] = await Promise.all([
+      painelApi(`/agendamentos?de=${dia}&ate=${dia}`),
+      painelApi(`/agendamentos?de=${hoje}&ate=${somarDias(hoje, 6)}&status=agendado`),
+    ]);
     const irPara = (d) => { location.hash = `#/painel/agenda?dia=${d}`; };
+    // Texto da agenda da semana para mandar para o próprio WhatsApp
+    const porDia = {};
+    semana.forEach((a) => { (porDia[dataNoFuso(a.inicio)] ??= []).push(a); });
+    const textoSemana = `📅 Agenda da semana — ${cfgPainel?.nome_salao ?? 'Lucy Cabeleireira'}\n\n` + (Object.keys(porDia).length
+      ? Object.entries(porDia).map(([d, itens]) => `*${fmt.partesDoDia(d).longa}*\n` + itens.map((a) =>
+          `• ${fmt.hora(a.inicio)}–${fmt.hora(a.fim)} · ${a.cliente?.nome} · ${servicosTexto(a)}`).join('\n')).join('\n\n')
+      : 'Nenhum horário confirmado nos próximos 7 dias.');
+    const linkSemana = cfgPainel?.whatsapp_lucy ? zapCom(cfgPainel.whatsapp_lucy, textoSemana) : null;
     $c.innerHTML = `
       <div class="navegar-dia">
         <button class="secundario pequeno" id="ant" aria-label="Dia anterior">◀</button>
@@ -1260,6 +1412,9 @@
         ${dia !== hojeNoSalao() ? '<button class="secundario pequeno" id="hoje">Hoje</button>' : ''}
       </div>
       <div class="linha-titulo"><h2>${esc(fmt.partesDoDia(dia).longa)}</h2><button class="pequeno" id="marcar">+ Marcar horário</button></div>
+      <p class="suave" style="margin-top:0">${linkSemana
+        ? `<a href="${esc(linkSemana)}" target="_blank" rel="noopener">${ICONE_ZAP} Mandar a agenda da semana para o meu WhatsApp</a> (${semana.length} horário${semana.length === 1 ? '' : 's'})`
+        : 'Para receber a agenda da semana no seu WhatsApp, preencha o WhatsApp do salão na aba <a href="#/painel/salao">Salão</a>.'}</p>
       <div id="form-novo"></div>
       ${lista.length ? lista.map((a) => cartaoAgendamento(a)).join('') : '<p class="cartao suave">Nenhum horário neste dia.</p>'}`;
     document.getElementById('ant').onclick = () => irPara(somarDias(dia, -1));
@@ -1281,7 +1436,6 @@
     { nome: 'alergias', rotulo: 'Alergias', tipo: 'area', max: 500 },
     { nome: 'necessidades_especificas', rotulo: 'Necessidades específicas', tipo: 'area', max: 500, dica: 'Acessibilidade, mobilidade, sensibilidades, gestação…' },
     { nome: 'observacoes', rotulo: 'Anotações', tipo: 'area', max: 2000 },
-    { nome: 'aceita_lembrete_email', rotulo: 'Aceita lembretes por e-mail', tipo: 'check', padrao: true },
   ];
 
   async function abaClientes($c, resto) {
@@ -1343,7 +1497,6 @@
         ${cl.necessidades_especificas ? `<p class="alerta-cliente">Necessidades: ${esc(cl.necessidades_especificas)}</p>` : ''}
         ${linha('Nascimento', cl.data_nascimento && fmt.partesDoDia(cl.data_nascimento).longa.replace(/^[^,]+, /, ''))}
         ${cl.observacoes ? `<p style="white-space:pre-line"><span class="suave">Anotações:</span> ${esc(cl.observacoes)}</p>` : ''}
-        <p class="suave">Lembretes por e-mail: ${cl.aceita_lembrete_email ? 'sim' : 'não'}</p>
         <div class="acoes-item">
           <a class="botao pequeno" href="#/painel/agenda/novo?cliente=${esc(cl.id)}">Marcar horário</a>
           <button class="perigo pequeno" id="excluir">Excluir cliente</button>
@@ -1506,6 +1659,27 @@
       resumo: (d) => `<p class="quando">${esc(fmt.partesDoDia(d.data).longa)}</p>
         <p class="suave" style="margin:0">${d.tipo === 'fechado' ? 'Fechado' : `Das ${esc(fmt.horaCurta(d.abre.slice(0, 5)))} às ${esc(fmt.horaCurta(d.fecha.slice(0, 5)))}`}
         ${d.motivo ? ' · ' + esc(d.motivo) : ''}${d.data < hojeNoSalao() ? ' · já passou' : ''}</p>`,
+      extras: (d) => d.data >= hojeNoSalao() ? '<button class="pequeno" data-acao="avisar">Avisar clientes</button>' : '',
+      acoesExtras: {
+        avisar: async (d) => {
+          const ags = (await painelApi(`/agendamentos?de=${d.data}&ate=${d.data}`)).filter((a) => ['solicitado', 'agendado'].includes(a.status));
+          const tipo = d.tipo === 'fechado' ? 'folga' : 'especial';
+          const extra = { motivo: d.motivo, abre: d.abre && fmt.horaCurta(d.abre.slice(0, 5)), fecha: d.fecha && fmt.horaCurta(d.fecha.slice(0, 5)) };
+          const geral = `📣 Aviso do salão ${cfgPainel?.nome_salao ?? ''}: no dia ${fmt.partesDoDia(d.data).longa} ` +
+            (d.tipo === 'fechado' ? 'não vou atender' : `vou atender das ${extra.abre} às ${extra.fecha}`) + (d.motivo ? ` (${d.motivo})` : '') + '. Obrigada! 💜';
+          const $j = janela(`Avisar sobre ${esc(fmt.partesDoDia(d.data).longa)}`, `
+            ${ags.length ? `<p class="suave">Clientes com horário nesse dia. Toque em cada nome: o WhatsApp abre com a mensagem pronta.</p>
+              <div class="lista-links">${ags.map((a) => linkZapCliente(a, tipo, extra)
+                ? `<a class="botao secundario" target="_blank" rel="noopener" href="${esc(linkZapCliente(a, tipo, extra))}">${ICONE_ZAP} ${esc(a.cliente?.nome)} · ${esc(fmt.hora(a.inicio))}</a>` : '').join('')}</div>`
+              : '<p class="suave">Ninguém tem horário marcado nesse dia.</p>'}
+            <p class="suave" style="margin-top:1rem">Aviso geral, para colar na sua lista de transmissão ou no status do WhatsApp:</p>
+            <p class="cartao" style="white-space:pre-line;margin-bottom:.5rem">${esc(geral)}</p>
+            <button class="pequeno" data-copiar>Copiar aviso geral</button>`);
+          $j.querySelector('[data-copiar]').onclick = async (e) => {
+            e.target.textContent = await copiarTexto(geral) ? 'Copiado!' : 'Selecione o texto acima e copie';
+          };
+        },
+      },
     });
   }
 
@@ -1554,10 +1728,10 @@
       { nome: 'retorno_momento', rotulo: 'Quando oferecer o retorno', tipo: 'select',
         opcoes: [['ao_finalizar', 'Ao finalizar o serviço'], ['apos_pagamento', 'Depois do pagamento']] },
     ]],
-    ['Catálogos', [
-      { nome: 'codigo_avon', rotulo: 'Código de consultora Avon', max: 40 }, { nome: 'link_avon', rotulo: 'Link do catálogo Avon', max: 300 },
-      { nome: 'codigo_natura', rotulo: 'Código de consultora Natura', max: 40 }, { nome: 'link_natura', rotulo: 'Link do catálogo Natura', max: 300 },
-      { nome: 'codigo_hinode', rotulo: 'Código de consultora Hinode', max: 40 }, { nome: 'link_hinode', rotulo: 'Link do catálogo Hinode', max: 300 },
+    ['Catálogos (aparecem na página inicial para as clientes)', [
+      { nome: 'codigo_avon', rotulo: 'Código de consultora Avon', max: 40 }, { nome: 'link_avon', rotulo: 'Link do catálogo Avon', max: 300, dica: 'Comece com https://' },
+      { nome: 'codigo_natura', rotulo: 'Código de consultora Natura', max: 40 }, { nome: 'link_natura', rotulo: 'Link do catálogo Natura', max: 300, dica: 'Comece com https://' },
+      { nome: 'codigo_hinode', rotulo: 'Código de consultora Hinode', max: 40 }, { nome: 'link_hinode', rotulo: 'Link do catálogo Hinode', max: 300, dica: 'Comece com https://' },
     ]],
   ];
   async function abaSalao($c) {
@@ -1571,7 +1745,7 @@
     form.onsubmit = (ev) => {
       ev.preventDefault();
       enviarFormulario(form, async () => {
-        await painelApi('/configuracoes', { metodo: 'PATCH', corpo: lerCampos(form, todos) });
+        cfgPainel = await painelApi('/configuracoes', { metodo: 'PATCH', corpo: lerCampos(form, todos) });
         salaoCache = null;
         form.querySelector('button[type=submit]').disabled = false;
         form.querySelector('button[type=submit]').textContent = 'Salvar';
@@ -1654,6 +1828,7 @@
   async function sair() {
     try { await api('/api/sair', { metodo: 'POST', autenticado: true }); } catch {}
     sessao.apagar();
+    cfgPainel = null;
     telaLogin();
   }
 

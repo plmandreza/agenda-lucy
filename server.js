@@ -433,6 +433,14 @@ app.get('/api/publico/salao', exigirConfiguracao, async (req, res) => {
     especiais,
     promocoes: promocoes.filter((p) => !p.valida_ate || p.valida_ate >= hoje),
     agenda: { hoje, ate },
+    // Catálogos de revenda: só aparecem as marcas com código ou link preenchido.
+    // (O link só é enviado se começar com http:// ou https://, por segurança.)
+    catalogos: [['Avon', 'avon'], ['Natura', 'natura'], ['Hinode', 'hinode']]
+      .map(([marca, chave]) => {
+        const link = cfg[`link_${chave}`];
+        return { marca, codigo: cfg[`codigo_${chave}`] || null, link: link && /^https?:\/\//i.test(link) ? link : null };
+      })
+      .filter((c) => c.codigo || c.link),
   });
 });
 
@@ -578,6 +586,14 @@ const TIPOS = {
     return String(v).slice(0, 5);
   },
   opcao: (v, c) => { if (!c.opcoes.includes(v)) throw new Error(); return v; },
+  url: (v) => {
+    const t = String(v ?? '').trim();
+    if (!t) return null;
+    let u;
+    try { u = new URL(t); } catch { throw new Error(); }
+    if (!['http:', 'https:'].includes(u.protocol) || t.length > 300) throw new Error();
+    return u.href;
+  },
   whatsapp: (v) => { if (!v) return null; const n = normalizarWhatsapp(v); if (!n) throw new Error(); return n; },
   email: (v) => {
     const e = String(v ?? '').trim().toLowerCase();
@@ -725,9 +741,9 @@ const CAMPOS_CONFIG = {
   antecedencia_min_horas: { tipo: 'inteiro', min: 0, max: 168, padrao: 2, rotulo: 'Antecedência mínima' },
   antecedencia_cancelamento_horas: { tipo: 'inteiro', min: 0, max: 168, padrao: 0, rotulo: 'Antecedência para cancelar' },
   dias_a_frente: { tipo: 'inteiro', min: 1, max: 180, padrao: 45, rotulo: 'Dias à frente' },
-  codigo_avon: { tipo: 'texto', max: 40, rotulo: 'Código Avon' }, link_avon: { tipo: 'texto', max: 300, rotulo: 'Link Avon' },
-  codigo_natura: { tipo: 'texto', max: 40, rotulo: 'Código Natura' }, link_natura: { tipo: 'texto', max: 300, rotulo: 'Link Natura' },
-  codigo_hinode: { tipo: 'texto', max: 40, rotulo: 'Código Hinode' }, link_hinode: { tipo: 'texto', max: 300, rotulo: 'Link Hinode' },
+  codigo_avon: { tipo: 'texto', max: 40, rotulo: 'Código Avon' }, link_avon: { tipo: 'url', rotulo: 'Link do catálogo Avon' },
+  codigo_natura: { tipo: 'texto', max: 40, rotulo: 'Código Natura' }, link_natura: { tipo: 'url', rotulo: 'Link do catálogo Natura' },
+  codigo_hinode: { tipo: 'texto', max: 40, rotulo: 'Código Hinode' }, link_hinode: { tipo: 'url', rotulo: 'Link do catálogo Hinode' },
 };
 app.get('/api/lucy/configuracoes', ...soLucy, async (req, res) => res.json(await lerConfiguracoes()));
 app.patch('/api/lucy/configuracoes', ...soLucy, async (req, res) => {
@@ -763,7 +779,7 @@ async function completarAgendamentos(lista) {
   if (!lista.length) return [];
   const idsClientes = [...new Set(lista.map((a) => a.cliente_id))];
   const [clientes, itens] = await Promise.all([
-    q(banco.from('clientes').select('id, nome, whatsapp, alergias, necessidades_especificas').in('id', idsClientes)),
+    q(banco.from('clientes').select('id, nome, whatsapp, email, aceita_lembrete_email, alergias, necessidades_especificas').in('id', idsClientes)),
     q(banco.from('agendamento_servicos').select('agendamento_id, servico_id, nome, preco, duracao_min').in('agendamento_id', lista.map((a) => a.id))),
   ]);
   return lista.map((a) => ({
