@@ -3,27 +3,36 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Lucy cabeleireira</title>
-  <meta name="description" content="Salão Lucy cabeleireira: agende seu horário.">
+  <title>Lucy Cabeleireira</title>
+  <meta name="description" content="Salão Lucy Cabeleireira: veja os serviços e peça seu horário.">
   <meta name="theme-color" content="#7a3b5c">
   <!--
     LUCY CABELEIREIRA — página única (HTML + estilo + programação juntos)
-    Etapa 2: confere se o sistema está no ar e testa o login da Lucy.
+    Etapa 3: página da cliente (ver serviços, pedir, ver, remarcar e cancelar horário).
 
-    Endereços:
-      /           → página da cliente (por enquanto, "em breve")
-      /#/painel   → área da Lucy (login)
+    Endereços (o que vem depois do #):
+      /                    → início: serviços, funcionamento e contato
+      /#/agendar           → pedir um horário (4 passos)
+      /#/agendar?remarcar= → remarcar um pedido existente
+      /#/pedido/<código>   → o pedido da cliente (link pessoal)
+      /#/meus-pedidos      → pedidos guardados neste aparelho
+      /#/painel            → área da Lucy (login)
   -->
   <style>
     :root {
       --vinho: #7a3b5c;
       --vinho-escuro: #5c2a44;
+      --rosa: #f6e3ec;
       --rosa-claro: #fbf1f5;
       --creme: #fffaf6;
       --texto: #2b2026;
       --texto-suave: #6b5a63;
       --verde: #2e7d4f;
+      --verde-claro: #e6f4ec;
+      --amarelo-claro: #fff4d6;
+      --amarelo-texto: #7a5300;
       --vermelho: #b3261e;
+      --vermelho-claro: #fdecea;
       --borda: #ead7e0;
       --raio: 14px;
     }
@@ -34,24 +43,42 @@
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       background: var(--creme); color: var(--texto); line-height: 1.5;
     }
-    .topo { background: var(--vinho); color: #fff; padding: 1rem 1.25rem; }
+    .topo {
+      background: var(--vinho); color: #fff; padding: 1rem 1.25rem;
+      display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+    }
     .marca { color: #fff; text-decoration: none; font-size: 1.4rem; font-weight: 700; letter-spacing: .3px; }
     .marca span { font-weight: 400; opacity: .9; }
+    .topo nav a { color: #fff; font-size: .9rem; text-decoration: none; border: 1.5px solid rgba(255,255,255,.6);
+      padding: .35rem .75rem; border-radius: 999px; white-space: nowrap; }
+    .topo nav a:hover { background: rgba(255,255,255,.12); }
+    .marca { white-space: nowrap; }
+    @media (max-width: 420px) {  /* celular: nome e botão cabem na mesma linha */
+      .topo { padding: .9rem 1rem; }
+      .marca { font-size: 1.2rem; }
+      .topo nav a { font-size: .8rem; padding: .3rem .6rem; }
+    }
     main { flex: 1; width: 100%; max-width: 34rem; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
     main:focus { outline: none; }
-    h1 { font-size: 1.5rem; margin: 0 0 .5rem; color: var(--vinho-escuro); }
+    h1 { font-size: 1.5rem; margin: 0 0 .5rem; color: var(--vinho-escuro); line-height: 1.25; }
+    h2 { font-size: 1.15rem; margin: 0 0 .75rem; color: var(--vinho-escuro); }
     p { margin: .4rem 0 1rem; }
+    a { color: var(--vinho); }
     .cartao {
       background: #fff; border: 1px solid var(--borda); border-radius: var(--raio);
       padding: 1.25rem; margin-bottom: 1.25rem; box-shadow: 0 2px 10px rgba(122, 59, 92, .06);
     }
+    .cartao.destaque { background: linear-gradient(160deg, #fff 0%, var(--rosa-claro) 100%); }
     .suave { color: var(--texto-suave); font-size: .9rem; }
     label { display: block; font-weight: 600; margin: 1rem 0 .35rem; }
-    input {
+    .dica { display: block; font-weight: 400; color: var(--texto-suave); font-size: .85rem; margin-top: .1rem; }
+    input, textarea {
       width: 100%; font: inherit; padding: .8rem .9rem; border-radius: 10px;
       border: 1.5px solid var(--borda); background: #fff; color: var(--texto);
     }
-    input:focus { border-color: var(--vinho); outline: 3px solid rgba(122, 59, 92, .18); }
+    textarea { min-height: 5.5rem; resize: vertical; }
+    input:focus, textarea:focus { border-color: var(--vinho); outline: 3px solid rgba(122, 59, 92, .18); }
+
     /* Campo de senha com o "olhinho" dentro, à direita */
     .linha-senha { position: relative; }
     .linha-senha input { padding-right: 3.25rem; }
@@ -63,24 +90,101 @@
     }
     button.olhinho:hover { background: var(--rosa-claro); color: var(--vinho); }
     button.olhinho svg { width: 1.4rem; height: 1.4rem; }
-    button {
+
+    /* Botões (e links com cara de botão) */
+    button, .botao {
       font: inherit; font-weight: 600; cursor: pointer; border-radius: 10px;
       padding: .8rem 1.2rem; min-height: 3rem; border: 1.5px solid var(--vinho);
-      background: var(--vinho); color: #fff;
+      background: var(--vinho); color: #fff; text-decoration: none;
+      display: inline-flex; align-items: center; justify-content: center; text-align: center;
     }
-    button:hover { background: var(--vinho-escuro); }
-    button:focus-visible, a:focus-visible { outline: 3px solid #e3a6c2; outline-offset: 2px; }
-    button:disabled { opacity: .6; cursor: wait; }
-    button.secundario { background: #fff; color: var(--vinho); }
-    button.secundario:hover { background: var(--rosa-claro); }
+    button:hover, .botao:hover { background: var(--vinho-escuro); }
+    button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid #e3a6c2; outline-offset: 2px; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    button.secundario, .botao.secundario { background: #fff; color: var(--vinho); }
+    button.secundario:hover, .botao.secundario:hover { background: var(--rosa-claro); }
+    button.perigo { background: #fff; color: var(--vermelho); border-color: var(--vermelho); }
+    button.perigo:hover { background: var(--vermelho-claro); }
+    button.perigo-cheio { background: var(--vermelho); border-color: var(--vermelho); color: #fff; }
     .botao-largo { width: 100%; margin-top: 1.25rem; }
+    .acoes { display: flex; gap: .75rem; margin-top: 1.25rem; }
+    .acoes > * { flex: 1; }
+
+    /* Lista de serviços (início) */
+    .servicos { list-style: none; padding: 0; margin: 0; }
+    .servicos li { display: flex; justify-content: space-between; gap: 1rem; padding: .7rem 0; border-top: 1px solid var(--borda); }
+    .servicos li:first-child { border-top: none; padding-top: 0; }
+    .servicos .nome { font-weight: 600; }
+    .servicos .preco { font-weight: 700; color: var(--vinho-escuro); white-space: nowrap; text-align: right; }
+
+    /* Escolha de serviços (passo 1) */
+    .opcao {
+      display: flex; align-items: center; gap: .85rem; margin: 0 0 .6rem; padding: .85rem 1rem;
+      border: 1.5px solid var(--borda); border-radius: 12px; background: #fff; cursor: pointer; font-weight: 400;
+    }
+    .opcao:hover { border-color: #d7b3c5; }
+    .opcao input { width: 1.4rem; height: 1.4rem; margin: 0; accent-color: var(--vinho); flex: none; }
+    .opcao .info { flex: 1; }
+    .opcao .nome { font-weight: 600; display: block; }
+    .opcao:has(input:checked) { border-color: var(--vinho); background: var(--rosa-claro); }
+
+    .resumo {
+      display: flex; justify-content: space-between; align-items: center; gap: .5rem;
+      background: var(--rosa); border-radius: 12px; padding: .75rem 1rem; margin-top: 1rem; font-weight: 600;
+    }
+
+    /* Passos */
+    .passos { font-size: .85rem; color: var(--texto-suave); margin: 0 0 .25rem; font-weight: 600; letter-spacing: .3px; text-transform: uppercase; }
+    .barra { height: 6px; background: var(--rosa); border-radius: 99px; margin-bottom: 1.25rem; overflow: hidden; }
+    .barra span { display: block; height: 100%; background: var(--vinho); border-radius: 99px; transition: width .3s; }
+
+    /* Dias e horários (passo 2) */
+    .dias { display: flex; gap: .5rem; overflow-x: auto; padding: .25rem .1rem .75rem; scroll-snap-type: x mandatory; }
+    .dia {
+      flex: none; width: 4.4rem; min-height: 0; padding: .55rem .25rem; scroll-snap-align: start;
+      display: flex; flex-direction: column; align-items: center; gap: .05rem;
+      background: #fff; color: var(--texto); border: 1.5px solid var(--borda); font-weight: 400;
+    }
+    .dia:hover { background: var(--rosa-claro); }
+    .dia .sem { font-size: .75rem; text-transform: uppercase; color: var(--texto-suave); }
+    .dia .num { font-size: 1.3rem; font-weight: 700; }
+    .dia .mes { font-size: .75rem; color: var(--texto-suave); }
+    .dia:disabled { opacity: .45; background: #f6f1f3; }
+    .dia.selecionado { background: var(--vinho); border-color: var(--vinho); color: #fff; }
+    .dia.selecionado .sem, .dia.selecionado .mes { color: #fff; }
+    .horas { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.2rem, 1fr)); gap: .5rem; }
+    .hora { min-height: 2.75rem; padding: .5rem; background: #fff; color: var(--vinho); font-weight: 600; }
+    .hora:hover { background: var(--rosa-claro); }
+    .hora.selecionado { background: var(--vinho); color: #fff; }
+
+    /* Situação do pedido */
+    .selo { display: inline-block; padding: .3rem .75rem; border-radius: 999px; font-size: .85rem; font-weight: 700; margin-bottom: .75rem; }
+    .selo.solicitado { background: var(--amarelo-claro); color: var(--amarelo-texto); }
+    .selo.agendado, .selo.concluido { background: var(--verde-claro); color: var(--verde); }
+    .selo.cancelado, .selo.recusado, .selo.faltou { background: #f1edef; color: var(--texto-suave); }
+    .quando { font-size: 1.15rem; font-weight: 700; margin: 0 0 .25rem; }
+    .quando + .suave { margin-top: 0; }
+    .itens { list-style: none; padding: 0; margin: 1rem 0 0; }
+    .itens li { display: flex; justify-content: space-between; padding: .4rem 0; border-top: 1px dashed var(--borda); }
+    .itens li.total { font-weight: 700; border-top: 1.5px solid var(--borda); }
+    .link-pessoal { display: flex; gap: .5rem; }
+    .link-pessoal input { font-size: .85rem; color: var(--texto-suave); }
+
+    /* Mensagens */
+    .mensagem { margin-top: 1rem; padding: .75rem .9rem; border-radius: 10px; }
+    .mensagem.erro { background: var(--vermelho-claro); color: var(--vermelho); }
+    .mensagem.sucesso { background: var(--verde-claro); color: var(--verde); }
+    .mensagem.atencao { background: var(--amarelo-claro); color: var(--amarelo-texto); }
+    .mensagem:empty { display: none; }
+    .confirmar { border: 1.5px solid var(--vermelho); background: var(--vermelho-claro); border-radius: 12px; padding: 1rem; margin-top: 1rem; }
+    .confirmar p { margin-top: 0; }
+
     .status { list-style: none; padding: 0; margin: 0; }
     .status li { display: flex; gap: .6rem; align-items: center; padding: .35rem 0; }
     .ok { color: var(--verde); font-weight: 700; }
     .falha { color: var(--vermelho); font-weight: 700; }
-    .mensagem { margin-top: 1rem; padding: .75rem .9rem; border-radius: 10px; }
-    .mensagem.erro { background: #fdecea; color: var(--vermelho); }
-    .mensagem:empty { display: none; }
+    .sistema { text-align: center; font-size: .8rem; color: var(--texto-suave); margin: 0; }
+    .carregando { color: var(--texto-suave); }
     footer { text-align: center; padding: 1rem; font-size: .85rem; color: var(--texto-suave); }
     footer a { color: var(--vinho); }
     /* Texto só para leitores de tela (acessibilidade) */
@@ -90,6 +194,7 @@
 <body>
   <header class="topo">
     <a href="#/" class="marca">Lucy <span>Cabeleireira</span></a>
+    <nav id="nav" aria-label="Atalhos"></nav>
   </header>
 
   <main id="app" tabindex="-1" aria-live="polite"></main>
@@ -110,6 +215,7 @@
   // 2. PEQUENAS FERRAMENTAS
   // ===================================================================
   const $app = document.getElementById('app');
+  const $nav = document.getElementById('nav');
 
   // Evita que algum texto vindo de fora vire código na página.
   function esc(texto) {
@@ -117,14 +223,46 @@
       ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   }
 
-  // Guarda o "crachá" da Lucy no aparelho, para ela não ter que
-  // digitar a senha toda vez.
-  const sessao = {
-    CHAVE: 'lucy.sessao',
-    ler() { try { return JSON.parse(localStorage.getItem(this.CHAVE)); } catch { return null; } },
-    salvar(s) { try { localStorage.setItem(this.CHAVE, JSON.stringify(s)); } catch {} },
-    apagar() { try { localStorage.removeItem(this.CHAVE); } catch {} },
+  // Guardar e ler coisas no próprio aparelho (com cuidado, pois pode falhar).
+  const guardado = {
+    ler(chave, padrao) { try { return JSON.parse(localStorage.getItem(chave)) ?? padrao; } catch { return padrao; } },
+    salvar(chave, valor) { try { localStorage.setItem(chave, JSON.stringify(valor)); } catch {} },
+    apagar(chave) { try { localStorage.removeItem(chave); } catch {} },
   };
+
+  // O "crachá" da Lucy, para ela não ter que digitar a senha toda vez.
+  const sessao = {
+    ler: () => guardado.ler('lucy.sessao', null),
+    salvar: (s) => guardado.salvar('lucy.sessao', s),
+    apagar: () => guardado.apagar('lucy.sessao'),
+  };
+
+  // Os pedidos feitos neste aparelho (só os códigos dos links pessoais).
+  const meusPedidos = {
+    listar: () => guardado.ler('lucy.pedidos', []),
+    adicionar(token) { guardado.salvar('lucy.pedidos', [token, ...this.listar().filter((t) => t !== token)].slice(0, 10)); },
+    remover(token) { guardado.salvar('lucy.pedidos', this.listar().filter((t) => t !== token)); },
+  };
+
+  // Formatação no jeito brasileiro, sempre no horário de Brasília.
+  const FUSO = 'America/Sao_Paulo';
+  const fmt = {
+    reais: (n) => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+    duracao: (min) => { const h = Math.floor(min / 60), m = min % 60; return h ? `${h}h${m ? String(m).padStart(2, '0') : ''}` : `${m} min`; },
+    dataLonga: (iso) => new Intl.DateTimeFormat('pt-BR', { timeZone: FUSO, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(iso)),
+    hora: (iso) => new Intl.DateTimeFormat('pt-BR', { timeZone: FUSO, hour: '2-digit', minute: '2-digit' }).format(new Date(iso)),
+    horaCurta: (hhmm) => { const [h, m] = hhmm.split(':'); return `${Number(h)}h${m !== '00' ? m : ''}`; },
+    // Para os botões de dia: "qua", "4", "dez"
+    partesDoDia(data) {
+      const d = new Date(`${data}T12:00:00-03:00`);
+      const f = (o) => new Intl.DateTimeFormat('pt-BR', { timeZone: FUSO, ...o }).format(d).replace('.', '');
+      return { sem: f({ weekday: 'short' }), num: f({ day: 'numeric' }), mes: f({ month: 'short' }), longa: f({ weekday: 'long', day: 'numeric', month: 'long' }) };
+    },
+  };
+  const somarDias = (data, n) => { const d = new Date(`${data}T12:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+  const diaDaSemana = (data) => new Date(`${data}T12:00:00-03:00`).getUTCDay();
+  const dataNoFuso = (iso) => new Intl.DateTimeFormat('en-CA', { timeZone: FUSO }).format(new Date(iso));  // "AAAA-MM-DD"
+  const NOMES_DIAS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
   // Ícones do "olhinho" da senha (desenhos simples, sem depender de nada externo)
   const ICONE_OLHO = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
@@ -140,7 +278,7 @@
     constructor(mensagem, status) { super(mensagem); this.status = status; }
   }
 
-  // Conversa com o server.js. Se o crachá venceu, renova sozinho uma vez.
+  // Conversa com o server.js. Se o crachá da Lucy venceu, renova sozinho uma vez.
   async function api(caminho, { metodo = 'GET', corpo, autenticado = false, renovado = false } = {}) {
     const headers = {};
     if (corpo !== undefined) headers['Content-Type'] = 'application/json';
@@ -181,39 +319,507 @@
     }
   }
 
+  // Dados do salão (serviços, horários...). Busca uma vez e reaproveita.
+  let salaoCache = null;
+  async function carregarSalao(forcar = false) {
+    if (!salaoCache || forcar) salaoCache = await api('/api/publico/salao');
+    return salaoCache;
+  }
+
+  function telaErro(mensagem, tentarDeNovo = true) {
+    $app.innerHTML = `<div class="cartao"><p class="mensagem erro" role="alert">${esc(mensagem)}</p>
+      ${tentarDeNovo ? '<button class="botao-largo" onclick="mostrar()">Tentar de novo</button>' : ''}
+      <a class="botao secundario botao-largo" href="#/">Voltar ao início</a></div>`;
+  }
+
+  function topoDaTela() { window.scrollTo({ top: 0 }); $app.focus({ preventScroll: true }); }
+
+  function atualizarNav() {
+    const temPedidos = meusPedidos.listar().length > 0;
+    $nav.innerHTML = temPedidos ? '<a href="#/meus-pedidos">Meu horário</a>' : '';
+  }
+
 
   // ===================================================================
-  // 3. TELAS
+  // 3. TELAS DA CLIENTE
   // ===================================================================
 
-  // --- Página da cliente (por enquanto: "em breve" + teste do sistema)
+  // Resume o funcionamento: "Todos os dias, das 8h às 18h" (ou dia a dia).
+  function resumoDoFuncionamento(horarios) {
+    const abertos = horarios.filter((h) => h.trabalha);
+    if (!abertos.length) return 'Horários em breve.';
+    const faixa = (h) => `das ${fmt.horaCurta(h.abre.slice(0, 5))} às ${fmt.horaCurta(h.fecha.slice(0, 5))}`;
+    const iguais = abertos.every((h) => h.abre === abertos[0].abre && h.fecha === abertos[0].fecha);
+    if (abertos.length === 7 && iguais) return `Todos os dias, ${faixa(abertos[0])}`;
+    return horarios.map((h) => `${NOMES_DIAS[h.dia_semana]}: ${h.trabalha ? faixa(h) : 'fechado'}`).join('<br>');
+  }
+
+  // --- INÍCIO: serviços, funcionamento e contato (VISUALIZAR)
   async function telaInicio() {
+    $app.innerHTML = `<p class="carregando">Carregando…</p>`;
+    let d;
+    try { d = await carregarSalao(true); } catch (e) { return telaErro(e.message); }
+
+    const zap = d.salao.whatsapp
+      ? `<p><a href="https://wa.me/${esc(d.salao.whatsapp)}" target="_blank" rel="noopener">Falar com a Lucy no WhatsApp</a></p>` : '';
+    const promocoes = d.promocoes.map((p) => `
+      <div class="cartao destaque">
+        <p class="passos" style="margin:0">Promoção</p>
+        <h2>${esc(p.titulo)}</h2>
+        ${p.descricao ? `<p>${esc(p.descricao)}</p>` : ''}
+        ${p.valida_ate ? `<p class="suave">Válida até ${esc(fmt.partesDoDia(p.valida_ate).longa)}</p>` : ''}
+      </div>`).join('');
+
     $app.innerHTML = `
-      <div class="cartao">
-        <h1>Bem-vinda!</h1>
-        <p>Em breve você vai poder agendar seu horário com a Lucy por aqui.</p>
-      </div>
-      <div class="cartao">
-        <p class="suave" style="margin-top:0">Verificação do sistema</p>
-        <ul class="status" id="status">
-          <li>Verificando…</li>
+      <section class="cartao destaque">
+        <h1>Que bom ter você aqui!</h1>
+        <p>Escolha os serviços, veja os horários livres e faça o seu pedido. A Lucy confirma pra você.</p>
+        <a class="botao botao-largo" href="#/agendar">Pedir um horário</a>
+      </section>
+      ${promocoes}
+      <section class="cartao" aria-labelledby="t-servicos">
+        <h2 id="t-servicos">Serviços</h2>
+        <ul class="servicos">
+          ${d.servicos.map((s) => `
+            <li>
+              <div><span class="nome">${esc(s.nome)}</span>
+                <span class="suave" style="display:block">${s.descricao ? esc(s.descricao) + ' · ' : ''}${fmt.duracao(s.duracao_min)}</span></div>
+              <span class="preco">${fmt.reais(s.preco)}</span>
+            </li>`).join('')}
         </ul>
-      </div>`;
-    const $status = document.getElementById('status');
-    const linha = (ok, texto) =>
-      `<li><span class="${ok ? 'ok' : 'falha'}" aria-hidden="true">${ok ? '✓' : '✗'}</span>
-       <span><span class="sr">${ok ? 'Funcionando:' : 'Com problema:'}</span> ${esc(texto)}</span></li>`;
+      </section>
+      <section class="cartao" aria-labelledby="t-contato">
+        <h2 id="t-contato">Funcionamento e contato</h2>
+        <p>${resumoDoFuncionamento(d.horarios)}</p>
+        <p>${d.salao.endereco ? esc(d.salao.endereco) : '<span class="suave">Endereço em breve.</span>'}</p>
+        ${zap}
+      </section>
+      <p class="sistema" id="sistema">Verificando o sistema…</p>`;
+
+    // Verificação discreta (útil para conferir se servidor e banco estão no ar).
     try {
-      const r = await api('/api/saude');
-      $status.innerHTML = linha(true, 'Servidor no ar') + linha(true, `Banco de dados conectado (${r.salao})`);
+      await api('/api/saude');
+      document.getElementById('sistema').innerHTML = '<span class="ok" aria-hidden="true">✓</span> Sistema funcionando';
     } catch (e) {
-      $status.innerHTML = e.status === 0
-        ? linha(false, e.message)
-        : linha(true, 'Servidor no ar') + linha(false, e.message);
+      document.getElementById('sistema').innerHTML = `<span class="falha" aria-hidden="true">✗</span> ${esc(e.message)}`;
     }
   }
 
-  // --- Área da Lucy
+  // --- PEDIR HORÁRIO (CRIAR) e REMARCAR (EDITAR) — em passos
+  // Tudo que a cliente vai escolhendo fica guardado aqui até o envio.
+  let ag = null;
+
+  async function telaAgendar(params) {
+    $app.innerHTML = `<p class="carregando">Carregando…</p>`;
+    let d;
+    try { d = await carregarSalao(); } catch (e) { return telaErro(e.message); }
+
+    const remarcar = params.get('remarcar');
+    ag = {
+      passo: 1, servicos: new Set(), data: null, inicio: null, horarios: [], remarcar: null, pedido: null,
+      ...guardado.ler('lucy.cliente', {}),  // nome, whatsapp e e-mail usados da última vez neste aparelho
+      necessidades: '', observacao: '', lembrete_email: true,
+    };
+    if (remarcar) {
+      try {
+        const p = await api(`/api/publico/pedidos/${encodeURIComponent(remarcar)}`);
+        if (!p.pode_alterar) return telaErro('Este pedido não pode mais ser alterado.', false);
+        ag.remarcar = remarcar;
+        ag.pedido = p;
+        ag.data = dataNoFuso(p.inicio);  // começa mostrando o dia do próprio pedido
+        ag.diaManual = true;
+        p.servicos.forEach((s) => { if (d.servicos.some((x) => x.id === s.id)) ag.servicos.add(s.id); });
+      } catch (e) { return telaErro(e.message); }
+    }
+    desenharPasso();
+  }
+
+  // Serviços escolhidos, duração e total — calculados na hora.
+  function escolha() {
+    const lista = salaoCache.servicos.filter((s) => ag.servicos.has(s.id));
+    return {
+      lista,
+      duracao: lista.reduce((t, s) => t + s.duracao_min, 0),
+      total: lista.reduce((t, s) => t + s.preco, 0),
+    };
+  }
+
+  // Quais passos existem: ao remarcar, não precisa pedir os dados de novo.
+  const passosDoFluxo = () => ag.remarcar ? [1, 2, 4] : [1, 2, 3, 4];
+
+  function cabecalhoDoPasso(titulo) {
+    const passos = passosDoFluxo();
+    const n = passos.indexOf(ag.passo) + 1;
+    return `
+      <p class="passos">${ag.remarcar ? 'Remarcar · ' : ''}Passo ${n} de ${passos.length}</p>
+      <div class="barra" aria-hidden="true"><span style="width:${(n / passos.length) * 100}%"></span></div>
+      <h1>${titulo}</h1>`;
+  }
+
+  function irParaPasso(direcao) {
+    const passos = passosDoFluxo();
+    ag.passo = passos[passos.indexOf(ag.passo) + direcao];
+    desenharPasso();
+    topoDaTela();
+  }
+
+  function desenharPasso() {
+    if (ag.passo === 1) passoServicos();
+    else if (ag.passo === 2) passoQuando();
+    else if (ag.passo === 3) passoDados();
+    else passoRevisar();
+  }
+
+  // Passo 1: quais serviços?
+  function passoServicos() {
+    $app.innerHTML = `
+      <div class="cartao">
+        ${cabecalhoDoPasso('O que você quer fazer?')}
+        <p class="suave">Pode escolher mais de um.</p>
+        <fieldset style="border:0;padding:0;margin:0">
+          <legend class="sr">Serviços</legend>
+          ${salaoCache.servicos.map((s) => `
+            <label class="opcao">
+              <input type="checkbox" value="${esc(s.id)}" ${ag.servicos.has(s.id) ? 'checked' : ''}>
+              <span class="info"><span class="nome">${esc(s.nome)}</span>
+                <span class="suave">${s.descricao ? esc(s.descricao) + ' · ' : ''}${fmt.duracao(s.duracao_min)}</span></span>
+              <strong>${fmt.reais(s.preco)}</strong>
+            </label>`).join('')}
+        </fieldset>
+        <div class="resumo" id="resumo" aria-live="polite"></div>
+        <div class="acoes">
+          <a class="botao secundario" href="${ag.remarcar ? '#/pedido/' + esc(ag.remarcar) : '#/'}">Voltar</a>
+          <button id="continuar">Continuar</button>
+        </div>
+      </div>`;
+
+    const atualizar = () => {
+      const e = escolha();
+      document.getElementById('resumo').innerHTML = e.lista.length
+        ? `<span>${e.lista.length} serviço${e.lista.length > 1 ? 's' : ''} · ${fmt.duracao(e.duracao)}</span><span>${fmt.reais(e.total)}</span>`
+        : '<span>Nenhum serviço escolhido</span>';
+      document.getElementById('continuar').disabled = !e.lista.length;
+    };
+    $app.querySelectorAll('.opcao input').forEach((cx) => {
+      cx.onchange = () => {
+        cx.checked ? ag.servicos.add(cx.value) : ag.servicos.delete(cx.value);
+        ag.inicio = null;  // mudou a duração: o horário escolhido precisa ser revisto
+        atualizar();
+      };
+    });
+    document.getElementById('continuar').onclick = () => irParaPasso(+1);
+    atualizar();
+  }
+
+  // O salão abre neste dia? (folgas e horários especiais valem mais que a semana)
+  function diaAberto(data) {
+    const especial = salaoCache.especiais.find((e) => e.data === data);
+    if (especial) return especial.tipo !== 'fechado';
+    return !!salaoCache.horarios.find((h) => h.dia_semana === diaDaSemana(data))?.trabalha;
+  }
+
+  // Passo 2: quando?
+  function passoQuando() {
+    const { hoje, ate } = salaoCache.agenda;
+    const dias = [];
+    for (let d = hoje; d <= ate; d = somarDias(d, 1)) dias.push(d);
+    if (!ag.data || !diaAberto(ag.data)) ag.data = dias.find(diaAberto) ?? null;
+
+    $app.innerHTML = `
+      <div class="cartao">
+        ${cabecalhoDoPasso('Escolha o dia e o horário')}
+        <p class="suave">Duração prevista: ${fmt.duracao(escolha().duracao)}</p>
+        <div class="dias" role="group" aria-label="Dias">
+          ${dias.map((d) => {
+            const p = fmt.partesDoDia(d), aberto = diaAberto(d);
+            return `<button class="dia ${d === ag.data ? 'selecionado' : ''}" data-dia="${d}" ${aberto ? '' : 'disabled'}
+              aria-pressed="${d === ag.data}" aria-label="${esc(p.longa)}${aberto ? '' : ' (fechado)'}">
+              <span class="sem">${esc(p.sem)}</span><span class="num">${esc(p.num)}</span><span class="mes">${aberto ? esc(p.mes) : 'fechado'}</span>
+            </button>`;
+          }).join('')}
+        </div>
+        <h2 id="t-horas" style="margin-top:.5rem">${ag.data ? esc(fmt.partesDoDia(ag.data).longa) : ''}</h2>
+        <div id="horas" aria-labelledby="t-horas"><p class="carregando">Buscando horários…</p></div>
+        <p class="mensagem erro" id="msg" role="alert"></p>
+        <div class="acoes">
+          <button class="secundario" id="voltar">Voltar</button>
+          <button id="continuar" disabled>Continuar</button>
+        </div>
+      </div>`;
+
+    $app.querySelectorAll('.dia').forEach((b) => {
+      b.onclick = () => { ag.data = b.dataset.dia; ag.diaManual = true; ag.inicio = null; passoQuando(); };
+    });
+    document.getElementById('voltar').onclick = () => irParaPasso(-1);
+    document.getElementById('continuar').onclick = () => irParaPasso(+1);
+    $app.querySelector('.dia.selecionado')?.scrollIntoView({ block: 'nearest', inline: 'center' });
+    carregarHoras();
+  }
+
+  async function carregarHoras() {
+    const $horas = document.getElementById('horas');
+    if (!ag.data) { $horas.innerHTML = '<p>Não há dias disponíveis no momento.</p>'; return; }
+    const qs = new URLSearchParams({ data: ag.data, servicos: [...ag.servicos].join(',') });
+    if (ag.remarcar) qs.set('pedido', ag.remarcar);
+    try {
+      const r = await api(`/api/publico/horarios?${qs}`);
+      ag.horarios = r.horarios;
+      // Se a página escolheu o dia sozinha e ele está cheio (ou já passou do horário),
+      // pula para o próximo dia aberto — até 14 tentativas.
+      if (!r.horarios.length && !ag.diaManual && (ag.pulos ?? 0) < 14) {
+        const { ate } = salaoCache.agenda;
+        let prox = somarDias(ag.data, 1);
+        while (prox <= ate && !diaAberto(prox)) prox = somarDias(prox, 1);
+        if (prox <= ate) { ag.pulos = (ag.pulos ?? 0) + 1; ag.data = prox; return passoQuando(); }
+      }
+      if (!r.horarios.some((h) => h.inicio === ag.inicio)) ag.inicio = null;
+      $horas.innerHTML = r.horarios.length
+        ? `<div class="horas">${r.horarios.map((h) => `
+            <button class="hora ${h.inicio === ag.inicio ? 'selecionado' : ''}" data-inicio="${esc(h.inicio)}"
+              aria-pressed="${h.inicio === ag.inicio}">${esc(h.hora)}</button>`).join('')}</div>`
+        : '<p>Não sobrou horário livre neste dia para esses serviços. Que tal outro dia?</p>';
+      $horas.querySelectorAll('.hora').forEach((b) => {
+        b.onclick = () => {
+          ag.inicio = b.dataset.inicio;
+          $horas.querySelectorAll('.hora').forEach((x) => {
+            x.classList.toggle('selecionado', x === b);
+            x.setAttribute('aria-pressed', String(x === b));
+          });
+          document.getElementById('continuar').disabled = false;
+        };
+      });
+      document.getElementById('continuar').disabled = !ag.inicio;
+    } catch (e) {
+      $horas.innerHTML = '';
+      document.getElementById('msg').textContent = e.message;
+    }
+  }
+
+  // Passo 3: seus dados
+  function passoDados() {
+    $app.innerHTML = `
+      <form class="cartao" id="form-dados" novalidate>
+        ${cabecalhoDoPasso('Seus dados')}
+        <label for="nome">Nome</label>
+        <input id="nome" autocomplete="name" maxlength="80" required value="${esc(ag.nome)}">
+        <label for="whatsapp">WhatsApp <span class="dica">Com DDD. É por ele que a Lucy fala com você.</span></label>
+        <input id="whatsapp" type="tel" inputmode="tel" autocomplete="tel" placeholder="(11) 98765-4321" required value="${esc(ag.whatsapp)}">
+        <label for="email">E-mail <span class="dica">Opcional. Para receber lembretes.</span></label>
+        <input id="email" type="email" inputmode="email" autocomplete="email" maxlength="120" value="${esc(ag.email)}">
+        <label class="opcao" style="margin-top:.6rem">
+          <input type="checkbox" id="lembrete" ${ag.lembrete_email ? 'checked' : ''}>
+          <span class="info">Quero receber lembretes por e-mail</span>
+        </label>
+        <label for="necessidades">Alguma necessidade específica?
+          <span class="dica">Opcional. Por exemplo: acessibilidade ou mobilidade reduzida, sensibilidade a cheiros ou barulho,
+          gestação, alergias. Conte o que for importante para a Lucy te receber bem.</span></label>
+        <textarea id="necessidades" maxlength="500">${esc(ag.necessidades)}</textarea>
+        <label for="observacao">Quer deixar algum recado? <span class="dica">Opcional.</span></label>
+        <textarea id="observacao" maxlength="500">${esc(ag.observacao)}</textarea>
+        <p class="suave">Seus dados ficam só com a Lucy e são usados apenas para o seu atendimento.</p>
+        <p class="mensagem erro" id="msg" role="alert"></p>
+        <div class="acoes">
+          <button type="button" class="secundario" id="voltar">Voltar</button>
+          <button type="submit">Continuar</button>
+        </div>
+      </form>`;
+
+    const ler = () => {
+      ag.nome = document.getElementById('nome').value.trim();
+      ag.whatsapp = document.getElementById('whatsapp').value.trim();
+      ag.email = document.getElementById('email').value.trim();
+      ag.lembrete_email = document.getElementById('lembrete').checked;
+      ag.necessidades = document.getElementById('necessidades').value.trim();
+      ag.observacao = document.getElementById('observacao').value.trim();
+    };
+    document.getElementById('voltar').onclick = () => { ler(); irParaPasso(-1); };
+    document.getElementById('form-dados').onsubmit = (ev) => {
+      ev.preventDefault();
+      ler();
+      const $msg = document.getElementById('msg');
+      const numeros = ag.whatsapp.replace(/\D/g, '');
+      if (ag.nome.length < 2) { $msg.textContent = 'Informe seu nome.'; return document.getElementById('nome').focus(); }
+      if (![10, 11, 12, 13].includes(numeros.length)) {
+        $msg.textContent = 'Informe um WhatsApp válido, com DDD.'; return document.getElementById('whatsapp').focus();
+      }
+      if (ag.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(ag.email)) {
+        $msg.textContent = 'Confira o e-mail (ou deixe em branco).'; return document.getElementById('email').focus();
+      }
+      irParaPasso(+1);
+    };
+  }
+
+  // Passo 4: conferir e enviar
+  function passoRevisar() {
+    const e = escolha();
+    $app.innerHTML = `
+      <div class="cartao">
+        ${cabecalhoDoPasso(ag.remarcar ? 'Confira o novo horário' : 'Confira seu pedido')}
+        <p class="quando">${esc(fmt.dataLonga(ag.inicio))}</p>
+        <p class="suave">${esc(fmt.hora(ag.inicio))} às ${esc(fmt.hora(Date.parse(ag.inicio) + e.duracao * 60000))}</p>
+        <ul class="itens">
+          ${e.lista.map((s) => `<li><span>${esc(s.nome)}</span><span>${fmt.reais(s.preco)}</span></li>`).join('')}
+          <li class="total"><span>Total</span><span>${fmt.reais(e.total)}</span></li>
+        </ul>
+        ${ag.remarcar ? '' : `
+          <p class="suave" style="margin-top:1rem">${esc(ag.nome)} · ${esc(ag.whatsapp)}${ag.email ? ' · ' + esc(ag.email) : ''}</p>
+          ${ag.necessidades ? `<p class="suave">Necessidades: ${esc(ag.necessidades)}</p>` : ''}
+          ${ag.observacao ? `<p class="suave">Recado: ${esc(ag.observacao)}</p>` : ''}`}
+        <p class="mensagem atencao">Este é um <strong>pedido</strong>. A Lucy vai confirmar o horário com você.
+          O pagamento é feito no salão (Pix, cartão ou dinheiro).</p>
+        <p class="mensagem erro" id="msg" role="alert"></p>
+        <div class="acoes">
+          <button class="secundario" id="voltar">Voltar</button>
+          <button id="enviar">${ag.remarcar ? 'Remarcar' : 'Enviar pedido'}</button>
+        </div>
+      </div>`;
+
+    document.getElementById('voltar').onclick = () => irParaPasso(-1);
+    document.getElementById('enviar').onclick = async () => {
+      const $b = document.getElementById('enviar');
+      const $msg = document.getElementById('msg');
+      $b.disabled = true; $b.textContent = 'Enviando…'; $msg.textContent = '';
+      try {
+        let p;
+        if (ag.remarcar) {
+          p = await api(`/api/publico/pedidos/${encodeURIComponent(ag.remarcar)}`, {
+            metodo: 'PATCH', corpo: { inicio: ag.inicio, servicos: [...ag.servicos] },
+          });
+        } else {
+          p = await api('/api/publico/pedidos', { metodo: 'POST', corpo: {
+            nome: ag.nome, whatsapp: ag.whatsapp, email: ag.email, lembrete_email: ag.lembrete_email,
+            necessidades: ag.necessidades, observacao: ag.observacao,
+            servicos: [...ag.servicos], inicio: ag.inicio,
+          } });
+          guardado.salvar('lucy.cliente', { nome: ag.nome, whatsapp: ag.whatsapp, email: ag.email });
+        }
+        meusPedidos.adicionar(p.token);
+        location.hash = `#/pedido/${p.token}?${ag.remarcar ? 'remarcado' : 'novo'}=1`;
+      } catch (e) {
+        $msg.textContent = e.message;
+        $b.disabled = false; $b.textContent = ag.remarcar ? 'Remarcar' : 'Enviar pedido';
+        if (e.status === 409) {  // horário ocupado nesse meio-tempo: volta para escolher outro
+          $msg.innerHTML = `${esc(e.message)} <button class="secundario botao-largo" id="outro">Escolher outro horário</button>`;
+          document.getElementById('outro').onclick = () => { ag.passo = 2; ag.inicio = null; desenharPasso(); topoDaTela(); };
+        }
+      }
+    };
+  }
+
+  // --- O PEDIDO DA CLIENTE (VISUALIZAR, com atalhos para REMARCAR e CANCELAR)
+  async function telaPedido(token, params) {
+    $app.innerHTML = `<p class="carregando">Carregando seu pedido…</p>`;
+    let p;
+    try {
+      p = await api(`/api/publico/pedidos/${encodeURIComponent(token)}`);
+    } catch (e) {
+      if (e.status === 404) meusPedidos.remover(token);
+      atualizarNav();
+      return telaErro(e.message, e.status !== 404);
+    }
+    meusPedidos.adicionar(p.token);
+    atualizarNav();
+
+    const link = `${location.origin}${location.pathname}#/pedido/${p.token}`;
+    const aviso = params.get('novo')
+      ? `<p class="mensagem sucesso" role="status"><strong>Pedido enviado, ${esc(p.primeiro_nome)}!</strong> A Lucy vai ver e confirmar o seu horário.</p>`
+      : params.get('remarcado')
+        ? '<p class="mensagem sucesso" role="status"><strong>Horário remarcado!</strong> A Lucy vai confirmar o novo horário.</p>'
+        : params.get('cancelado') ? '<p class="mensagem sucesso" role="status">Pedido cancelado.</p>' : '';
+
+    $app.innerHTML = `
+      ${aviso}
+      <div class="cartao">
+        <span class="selo ${esc(p.status)}">${esc(p.status_texto)}</span>
+        <p class="quando">${esc(fmt.dataLonga(p.inicio))}</p>
+        <p class="suave">${esc(fmt.hora(p.inicio))} às ${esc(fmt.hora(p.fim))}</p>
+        <ul class="itens">
+          ${p.servicos.map((s) => `<li><span>${esc(s.nome)}</span><span>${fmt.reais(s.preco)}</span></li>`).join('')}
+          <li class="total"><span>Total</span><span>${fmt.reais(p.valor_total)}</span></li>
+        </ul>
+        ${p.observacao_cliente ? `<p class="suave" style="margin-top:1rem;white-space:pre-line">Recado: ${esc(p.observacao_cliente)}</p>` : ''}
+        ${p.pode_alterar ? `
+          <div class="acoes">
+            <a class="botao secundario" href="#/agendar?remarcar=${esc(p.token)}">Remarcar</a>
+            <button class="perigo" id="cancelar">Cancelar</button>
+          </div>
+          <div id="confirmar"></div>` : ''}
+      </div>
+      <div class="cartao">
+        <h2>Seu link pessoal</h2>
+        <p class="suave">Guarde este link: é por ele que você vê, remarca ou cancela seu horário.
+          Neste aparelho, ele também fica em "Meu horário", no topo da página.</p>
+        <div class="link-pessoal">
+          <input id="link" readonly value="${esc(link)}" aria-label="Seu link pessoal">
+          <button class="secundario" id="copiar">Copiar</button>
+        </div>
+      </div>
+      <a class="botao secundario botao-largo" href="#/agendar">Fazer outro pedido</a>`;
+
+    document.getElementById('copiar').onclick = async () => {
+      const $b = document.getElementById('copiar');
+      try { await navigator.clipboard.writeText(link); } catch { document.getElementById('link').select(); document.execCommand?.('copy'); }
+      $b.textContent = 'Copiado!';
+      setTimeout(() => { $b.textContent = 'Copiar'; }, 2000);
+    };
+
+    const $cancelar = document.getElementById('cancelar');
+    if ($cancelar) $cancelar.onclick = () => {
+      // Confirmação antes de cancelar (sem janelas que travam a página).
+      document.getElementById('confirmar').innerHTML = `
+        <div class="confirmar" role="alertdialog" aria-labelledby="t-conf">
+          <p id="t-conf"><strong>Tem certeza que quer cancelar?</strong> O horário fica livre para outra pessoa.</p>
+          <div class="acoes" style="margin-top:0">
+            <button class="secundario" id="nao">Não, manter</button>
+            <button class="perigo-cheio" id="sim">Sim, cancelar</button>
+          </div>
+          <p class="mensagem erro" id="msg-cancelar" role="alert"></p>
+        </div>`;
+      document.getElementById('nao').onclick = () => { document.getElementById('confirmar').innerHTML = ''; $cancelar.focus(); };
+      document.getElementById('sim').onclick = async () => {
+        const $sim = document.getElementById('sim');
+        $sim.disabled = true; $sim.textContent = 'Cancelando…';
+        try {
+          await api(`/api/publico/pedidos/${encodeURIComponent(p.token)}/cancelar`, { metodo: 'POST' });
+          location.hash = `#/pedido/${p.token}?cancelado=1`;
+        } catch (e) {
+          document.getElementById('msg-cancelar').textContent = e.message;
+          $sim.disabled = false; $sim.textContent = 'Sim, cancelar';
+        }
+      };
+      document.getElementById('nao').focus();
+    };
+  }
+
+  // --- MEUS PEDIDOS (os que foram feitos neste aparelho)
+  async function telaMeusPedidos() {
+    const tokens = meusPedidos.listar();
+    if (!tokens.length) {
+      $app.innerHTML = `<div class="cartao"><h1>Meu horário</h1>
+        <p>Nenhum pedido guardado neste aparelho.</p>
+        <a class="botao botao-largo" href="#/agendar">Pedir um horário</a></div>`;
+      return;
+    }
+    $app.innerHTML = `<p class="carregando">Carregando…</p>`;
+    const resultados = await Promise.all(tokens.map((t) =>
+      api(`/api/publico/pedidos/${encodeURIComponent(t)}`).catch((e) => (e.status === 404 ? (meusPedidos.remover(t), null) : null))));
+    const pedidos = resultados.filter(Boolean).sort((a, b) => Date.parse(b.inicio) - Date.parse(a.inicio));
+    atualizarNav();
+    $app.innerHTML = `
+      <h1>Meu horário</h1>
+      ${pedidos.map((p) => `
+        <a class="cartao" href="#/pedido/${esc(p.token)}" style="display:block;text-decoration:none;color:inherit">
+          <span class="selo ${esc(p.status)}">${esc(p.status_texto)}</span>
+          <p class="quando">${esc(fmt.dataLonga(p.inicio))} · ${esc(fmt.hora(p.inicio))}</p>
+          <p class="suave" style="margin:0">${p.servicos.map((s) => esc(s.nome)).join(', ')}</p>
+        </a>`).join('') || '<p>Nenhum pedido encontrado.</p>'}
+      <a class="botao secundario botao-largo" href="#/agendar">Fazer outro pedido</a>`;
+  }
+
+
+  // ===================================================================
+  // 4. ÁREA DA LUCY
+  // ===================================================================
   async function telaPainel() {
     if (!sessao.ler()) return telaLogin();
     $app.innerHTML = `<div class="cartao"><p>Conferindo seu acesso…</p></div>`;
@@ -222,15 +828,14 @@
       $app.innerHTML = `
         <div class="cartao">
           <h1>Olá, Lucy!</h1>
-          <p>O login está funcionando. Nas próximas etapas, sua agenda e suas clientes vão aparecer aqui.</p>
+          <p>O login está funcionando. Na próxima etapa, seus pedidos, sua agenda e suas clientes vão aparecer aqui.</p>
           <p class="suave">Entrou como ${esc(eu.email)}</p>
           <button class="secundario botao-largo" id="sair">Sair</button>
         </div>`;
       document.getElementById('sair').onclick = sair;
     } catch (e) {
       if (e.status === 401) { sessao.apagar(); return telaLogin('Sua sessão expirou. Entre de novo.'); }
-      $app.innerHTML = `<div class="cartao"><p class="mensagem erro">${esc(e.message)}</p>
-        <button class="botao-largo" onclick="mostrar()">Tentar de novo</button></div>`;
+      telaErro(e.message);
     }
   }
 
@@ -291,12 +896,18 @@
 
 
   // ===================================================================
-  // 4. NAVEGAÇÃO: escolhe a tela pelo final do endereço (#/painel etc.)
+  // 5. NAVEGAÇÃO: escolhe a tela pelo que vem depois do # no endereço
   // ===================================================================
   function mostrar() {
-    const rota = location.hash.replace(/^#/, '') || '/';
+    const [rota, consulta] = (location.hash.replace(/^#/, '') || '/').split('?');
+    const params = new URLSearchParams(consulta || '');
+    atualizarNav();
     if (rota.startsWith('/painel')) telaPainel();
+    else if (rota === '/agendar') telaAgendar(params);
+    else if (rota.startsWith('/pedido/')) telaPedido(rota.slice('/pedido/'.length), params);
+    else if (rota === '/meus-pedidos') telaMeusPedidos();
     else telaInicio();
+    topoDaTela();
   }
   window.addEventListener('hashchange', mostrar);
   mostrar();
