@@ -10,9 +10,12 @@ export default function Agendar({ params }) {
   const [ag, setAg] = useState(null);  // tudo que a cliente vai escolhendo fica aqui até o envio
 
   useEffect(() => {
+    // "ativo" evita que uma busca antiga sobrescreva a tela (o React, em modo de
+    // desenvolvimento, roda este efeito duas vezes de propósito para achar esse tipo de erro).
+    let ativo = true;
     (async () => {
       let d;
-      try { d = await carregarSalao(); } catch (e) { return setErro({ mensagem: e.message, deNovo: true }); }
+      try { d = await carregarSalao(); } catch (e) { return ativo && setErro({ mensagem: e.message, deNovo: true }); }
       const remarcar = params.get('remarcar');
       const retorno = params.get('retorno');
       const longe = semRemy.ler();
@@ -27,12 +30,12 @@ export default function Agendar({ params }) {
       if (remarcar) {
         try {
           const p = await api(`/api/publico/pedidos/${encodeURIComponent(remarcar)}`);
-          if (!p.pode_alterar) return setErro({ mensagem: 'Este pedido não pode mais ser alterado.' });
+          if (!p.pode_alterar) return ativo && setErro({ mensagem: 'Este pedido não pode mais ser alterado.' });
           novo.remarcar = remarcar;
           novo.data = dataNoFuso(p.inicio);  // começa mostrando o dia do próprio pedido
           novo.diaManual = true;
           servicosDoPedido(p);
-        } catch (e) { return setErro({ mensagem: e.message, deNovo: true }); }
+        } catch (e) { return ativo && setErro({ mensagem: e.message, deNovo: true }); }
       }
       if (retorno) {
         // Retorno: já vem com os mesmos serviços e o dia sugerido
@@ -46,9 +49,11 @@ export default function Agendar({ params }) {
           }
         } catch { /* se o link estiver errado, segue como pedido normal */ }
       }
+      if (!ativo) return;
       setSalao(d);
       setAg(novo);
     })();
+    return () => { ativo = false; };
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps  (roda uma vez ao abrir a tela)
 
   if (erro) return <TelaErro mensagem={erro.mensagem} tentarDeNovo={erro.deNovo ? () => location.reload() : null} />;

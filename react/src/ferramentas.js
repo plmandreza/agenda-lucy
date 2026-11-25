@@ -17,6 +17,7 @@ export const meusPedidos = {
 // Formatação no jeito brasileiro, sempre no horário de Brasília.
 export const FUSO = 'America/Sao_Paulo';
 export const fmt = {
+  duracao: (min) => { const h = Math.floor(min / 60), m = min % 60; return h ? `${h}h${m ? String(m).padStart(2, '0') : ''}` : `${m} min`; },
   reais: (n) => Number(n).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
   dataLonga: (iso) => new Intl.DateTimeFormat('pt-BR', { timeZone: FUSO, weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(iso)),
   hora: (iso) => new Intl.DateTimeFormat('pt-BR', { timeZone: FUSO, hour: '2-digit', minute: '2-digit' }).format(new Date(iso)),

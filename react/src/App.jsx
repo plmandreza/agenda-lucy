@@ -41,7 +41,7 @@ export default function App() {
   const { rota, params, chave } = endereco;
   const ehPainel = rota.startsWith('/painel');
   let tela;
-  if (ehPainel) tela = <Painel />;
+  if (ehPainel) tela = <Painel sub={rota.slice('/painel'.length)} params={params} chave={chave} />;
   else if (rota === '/agendar') tela = <Agendar key={chave} params={params} />;
   else if (rota.startsWith('/pedido/')) tela = <Pedido key={chave} token={rota.slice('/pedido/'.length)} params={params} voltar={voltar} />;
   else if (rota === '/meus-pedidos') tela = <MeusPedidos voltar={voltar} />;
