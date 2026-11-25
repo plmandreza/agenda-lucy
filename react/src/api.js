@@ -57,3 +57,6 @@ export async function carregarSalao(forcar = false) {
   if (!salaoCache || forcar) salaoCache = await api('/api/publico/salao');
   return salaoCache;
 }
+
+// Depois que a Lucy muda serviços, horários ou dados do salão, a página das clientes busca de novo.
+export function esquecerSalao() { salaoCache = null; }

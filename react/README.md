@@ -1,11 +1,11 @@
 # Lucy Cabeleireira — versão em React
 
-A mesma página das clientes do site principal, feita em **React 19 + Vite**. Ela conversa com o **mesmo servidor** (`server.js`) e o **mesmo banco**: um pedido feito aqui aparece no painel da Lucy normalmente.
+O mesmo site da versão HTML — **telas das clientes e painel da Lucy** — feito em **React 19 + Vite**. Ela conversa com o **mesmo servidor** (`server.js`) e o **mesmo banco**: um pedido feito aqui aparece no painel da Lucy normalmente.
 
 | | Versão HTML | Versão React |
 |---|---|---|
 | Onde fica | `public/index.html` | esta pasta (`react/`) |
-| Como é feita | um arquivo, HTML + JS "na mão" | componentes React (`src/telas`, `src/componentes`) |
+| Como é feita | um arquivo, HTML + JS "na mão" | componentes React (`src/telas`, `src/painel`, `src/componentes`) |
 | Servidor | o próprio site | o site principal, pelo endereço em `VITE_API_URL` |
 
 ## Estrutura
@@ -21,7 +21,9 @@ react/
     ├── qr.js             QR code do Pix (mesmo código da versão HTML)
     ├── estilo.css        mesmo visual da versão HTML
     ├── componentes/      pedaços reaproveitados (botão copiar, campo do Remy…)
-    └── telas/            Início, Agendar, Pedido, Meu horário, Área da Lucy
+    ├── telas/            Início, Agendar, Pedido, Meu horário e a moldura do Painel
+    └── painel/           login e as 10 abas da Lucy (Pedidos, Agenda, Retornos, Clientes,
+                          Serviços, Horários, Promoções, Salão, Relatórios, Avaliações)
 ```
 
 ## Publicar na Vercel (projeto separado)

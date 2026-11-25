@@ -5,13 +5,18 @@ import { PainelContexto, painelApi } from '../painel/comum.jsx';
 import Login from '../painel/Login.jsx';
 import AbaPedidos from '../painel/AbaPedidos.jsx';
 import AbaAgenda from '../painel/AbaAgenda.jsx';
+import AbaClientes from '../painel/AbaClientes.jsx';
+import { AbaServicos, AbaHorarios, AbaPromocoes } from '../painel/AbasCadastros.jsx';
+import { AbaSalao, AbaRelatorios, AbaRetornos, AbaAvaliacoes } from '../painel/AbasSalao.jsx';
 
 const ABAS = [
   ['pedidos', 'Pedidos'], ['agenda', 'Agenda'], ['retornos', 'Retornos'], ['clientes', 'Clientes'], ['servicos', 'Serviços'],
   ['horarios', 'Horários'], ['promocoes', 'Promoções'], ['salao', 'Salão'], ['relatorios', 'Relatórios'], ['avaliacoes', 'Avaliações'],
 ];
-const TELAS = { pedidos: AbaPedidos, agenda: AbaAgenda };
-const SITE_PRINCIPAL = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
+const TELAS = {
+  pedidos: AbaPedidos, agenda: AbaAgenda, retornos: AbaRetornos, clientes: AbaClientes, servicos: AbaServicos,
+  horarios: AbaHorarios, promocoes: AbaPromocoes, salao: AbaSalao, relatorios: AbaRelatorios, avaliacoes: AbaAvaliacoes,
+};
 
 export default function Painel({ sub, params, chave }) {
   const [logada, setLogada] = useState(() => Boolean(sessao.ler()));
@@ -66,7 +71,7 @@ export default function Painel({ sub, params, chave }) {
   if (!logada) return <Login aviso={avisoLogin} entrou={() => { setLogada(true); setAvisoLogin(''); }} />;
 
   const [aba = 'pedidos', ...resto] = sub.split('/').filter(Boolean);
-  const Tela = TELAS[aba];
+  const Tela = TELAS[aba] ?? AbaPedidos;
   return (
     <PainelContexto.Provider value={contexto}>
       <div className="painel-topo">
@@ -82,13 +87,7 @@ export default function Painel({ sub, params, chave }) {
         {aviso && <div className={`mensagem ${aviso.tipo}`}>{aviso.mensagem}{aviso.extra}</div>}
       </div>
       <div id="conteudo">
-        {Tela ? <Tela key={chave} resto={resto} params={params} /> : (
-          <div className="cartao">
-            <h2>{ABAS.find(([id]) => id === aba)?.[1] ?? 'Aba'}</h2>
-            <p>Esta aba chega na próxima parte da versão React.</p>
-            <a className="botao secundario botao-largo" href={`${SITE_PRINCIPAL}/#/painel/${aba}`}>Abrir no painel do site principal</a>
-          </div>
-        )}
+        <Tela key={chave} resto={resto} params={params} />
       </div>
       {dialogo && <Dialogo d={dialogo} fechar={() => setDialogo(null)} />}
     </PainelContexto.Provider>

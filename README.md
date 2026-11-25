@@ -15,7 +15,7 @@ Sistema de agendamento para o salão da Lucy: as clientes pedem horários pelo s
 | Banco de dados | PostgreSQL no Supabase (acesso só pelo servidor, com RLS ligado e sem políticas públicas) |
 | Login | Supabase Auth (só o e-mail definido em `ADMIN_EMAIL` entra no painel) |
 | Hospedagem | Vercel (HTTPS) |
-| Versão React | React 19 + Vite, na pasta `react/` (mesmas telas das clientes, mesmo servidor) |
+| Versão React | React 19 + Vite, na pasta `react/` (todas as telas, mesmo servidor): https://agenda-lucy-react.vercel.app |
 
 ## O que o sistema faz
 
