@@ -297,6 +297,24 @@ async function janelaDoDia(data) {
 // Lista os horários livres de um dia para uma certa duração.
 // Considera ocupados os pedidos ainda não respondidos E os confirmados,
 // para que duas clientes não peçam o mesmo horário.
+// Horários CONFIRMADOS que se cruzam com [inicio, fim) — para avisar a Lucy.
+async function conflitosDe(inicio, fim, ignorarId = null) {
+  const lista = await q(banco.from('agendamentos').select('id, inicio, fim, cliente_id')
+    .eq('status', 'agendado').lt('inicio', fim).gt('fim', inicio));
+  const outros = lista.filter((a) => a.id !== ignorarId);
+  if (!outros.length) return [];
+  const clientes = await q(banco.from('clientes').select('id, nome').in('id', [...new Set(outros.map((a) => a.cliente_id))]));
+  return outros.map((a) => ({ id: a.id, inicio: a.inicio, fim: a.fim, nome: clientes.find((c) => c.id === a.cliente_id)?.nome ?? '' }));
+}
+// Se houver choque e a Lucy ainda não disse "confirmar mesmo assim", devolve 409 com a lista.
+async function avisarSeChocar(res, inicio, fim, ignorarId, forcar) {
+  if (forcar === true) return false;
+  const conflitos = await conflitosDe(inicio, fim, ignorarId);
+  if (!conflitos.length) return false;
+  res.status(409).json({ erro: 'Já tem cliente confirmada nesse horário.', conflito: true, conflitos });
+  return true;
+}
+
 async function horariosLivres(data, duracao, cfg, ignorarId = null) {
   const hoje = hojeNoSalao();
   if (data < hoje || data > somarDias(hoje, cfg.dias_a_frente)) return [];
@@ -305,8 +323,9 @@ async function horariosLivres(data, duracao, cfg, ignorarId = null) {
 
   const inicioDoDia = instante(data, 0).toISOString();
   const fimDoDia = instante(somarDias(data, 1), 0).toISOString();
+  // Só os horários CONFIRMADOS escondem a vaga (pedidos ainda não confirmados não bloqueiam).
   const marcados = await q(banco.from('agendamentos').select('id, inicio, fim')
-    .in('status', ['solicitado', 'agendado']).lt('inicio', fimDoDia).gt('fim', inicioDoDia));
+    .eq('status', 'agendado').lt('inicio', fimDoDia).gt('fim', inicioDoDia));
   const ocupados = marcados.filter((a) => a.id !== ignorarId)
     .map((a) => [Date.parse(a.inicio), Date.parse(a.fim)]);
 
@@ -318,7 +337,9 @@ async function horariosLivres(data, duracao, cfg, ignorarId = null) {
     const fim = ini + duracao * UM_MINUTO;
     if (ini < cedoDemais) continue;
     if (janela.pausa && m < janela.pausa[1] && m + duracao > janela.pausa[0]) continue;
-    if (ocupados.some(([a, b]) => ini < b && fim > a)) continue;
+    // A vaga some se COMEÇA durante um horário confirmado. Se só "encostar" no
+    // próximo, a vaga aparece e a Lucy é avisada ao confirmar (ela decide).
+    if (ocupados.some(([a, b]) => ini >= a && ini < b)) continue;
     livres.push({ hora: emHora(m), inicio: new Date(ini).toISOString() });
   }
   return livres;
@@ -370,11 +391,11 @@ const STATUS_TEXTO = {
 async function pedidoPorToken(token) {
   if (!RE_UUID.test(String(token))) return null;
   const p = await q(banco.from('agendamentos')
-    .select('id, token, cliente_id, status, inicio, fim, valor_total, observacao_cliente, criado_em, forma_pagamento, pago, concluido_em')
+    .select('id, token, cliente_id, status, inicio, fim, valor_total, observacao_cliente, criado_em, forma_pagamento, pago, concluido_em, sem_remy')
     .eq('token', token).maybeSingle());
   if (!p) return null;
   const [cliente, servicos, avaliacao, retornos] = await Promise.all([
-    q(banco.from('clientes').select('nome').eq('id', p.cliente_id).single()),
+    q(banco.from('clientes').select('nome, necessidades_especificas, sem_remy, motivo_sem_remy').eq('id', p.cliente_id).single()),
     q(banco.from('agendamento_servicos').select('servico_id, nome, preco, duracao_min').eq('agendamento_id', p.id)),
     q(banco.from('avaliacoes').select('nota, comentario').eq('agendamento_id', p.id).maybeSingle()),
     q(banco.from('agendamentos').select('id').eq('retorno_de', p.id).in('status', ['solicitado', 'agendado', 'concluido'])),
@@ -383,10 +404,15 @@ async function pedidoPorToken(token) {
   const ids = servicos.map((x) => x.servico_id).filter(Boolean);
   const dias = ids.length ? (await q(banco.from('servicos').select('retorno_dias').in('id', ids))).map((x) => x.retorno_dias).filter(Boolean) : [];
   return {
-    ...p, cliente_nome: cliente.nome, servicos, avaliacao,
+    ...p, cliente_nome: cliente.nome, cliente_necessidades: cliente.necessidades_especificas,
+    cliente_sem_remy: cliente.sem_remy, cliente_motivo_remy: cliente.motivo_sem_remy, servicos, avaliacao,
     tem_retorno: retornos.length > 0, retorno_dias: dias.length ? Math.min(...dias) : null,
   };
 }
+
+// Remy (o gato do salão): motivos aceitos para "prefiro que ele fique longe"
+const MOTIVOS_REMY = ['medo', 'alergia', 'nao_gosto', 'outro'];
+const motivoRemy = (m) => (MOTIVOS_REMY.includes(m) ? m : 'outro');
 
 const podeAlterar = (p) => ['solicitado', 'agendado'].includes(p.status) && Date.parse(p.inicio) > Date.now();
 
@@ -409,7 +435,7 @@ const pedidoParaCliente = (p, cfg) => ({
   valor_total: Number(p.valor_total),
   observacao_cliente: p.observacao_cliente,
   primeiro_nome: String(p.cliente_nome || '').split(' ')[0],
-  servicos: p.servicos.map((s) => ({ id: s.servico_id, nome: s.nome, preco: Number(s.preco), duracao_min: s.duracao_min })),
+  servicos: p.servicos.map((s) => ({ id: s.servico_id, nome: s.nome, preco: Number(s.preco) })),
   pode_alterar: podeAlterar(p),
   // Pagamento (Etapa 6): a cliente escolhe como prefere pagar; a Lucy confirma o recebimento.
   forma_pagamento: p.forma_pagamento,
@@ -420,6 +446,11 @@ const pedidoParaCliente = (p, cfg) => ({
   avaliacao: p.avaliacao ?? null,
   pode_avaliar: p.status === 'concluido' && !p.avaliacao,
   retorno: sugestaoDeRetorno(p, cfg),
+  // Etapa 7: detalhes que a cliente pode corrigir enquanto a Lucy ainda não respondeu
+  necessidades: p.cliente_necessidades ?? null,
+  sem_remy: Boolean(p.sem_remy || p.cliente_sem_remy),
+  motivo_remy: p.cliente_motivo_remy ?? null,
+  pode_editar_detalhes: p.status === 'solicitado' && Date.parse(p.inicio) > Date.now(),
 });
 
 // Monta a resposta completa do pedido para a cliente.
@@ -462,7 +493,9 @@ app.get('/api/publico/salao', exigirConfiguracao, async (req, res) => {
   ]);
   res.json({
     salao: { nome: cfg.nome_salao, endereco: cfg.endereco, whatsapp: cfg.whatsapp_lucy },
-    servicos: servicos.map((s) => ({ ...s, preco: Number(s.preco) })),
+    remy: cfg.remy_ligado !== false,
+    // A duração fica só com a Lucy (a cliente vê só o horário de início).
+    servicos: servicos.map(({ duracao_min, ...s }) => ({ ...s, preco: Number(s.preco) })),
     horarios,
     especiais,
     promocoes: promocoes.filter((p) => !p.valida_ate || p.valida_ate >= hoje),
@@ -509,7 +542,8 @@ app.post('/api/publico/pedidos', limitarPedidos, exigirConfiguracao, async (req,
 
   // Encontra a cliente pelo WhatsApp ou cria a ficha dela.
   // Se ela já existe, NÃO sobrescrevemos o que a Lucy anotou: só completamos o que está vazio.
-  let cliente = await q(banco.from('clientes').select('id, email, necessidades_especificas')
+  const semRemy = b.sem_remy === true;
+  let cliente = await q(banco.from('clientes').select('id, email, necessidades_especificas, sem_remy')
     .eq('whatsapp', whatsapp).maybeSingle());
   let obs = observacao;
   if (!cliente) {
@@ -517,10 +551,12 @@ app.post('/api/publico/pedidos', limitarPedidos, exigirConfiguracao, async (req,
       nome, whatsapp, email: email || null,
       necessidades_especificas: necessidades || null,
       aceita_lembrete_email: b.lembrete_email !== false,
-    }).select('id').single());
+      sem_remy: semRemy, motivo_sem_remy: semRemy ? motivoRemy(b.motivo_remy) : null,
+    }).select('id, sem_remy').single());
   } else {
     const completar = {};
     if (email && !cliente.email) completar.email = email;
+    if (semRemy && !cliente.sem_remy) Object.assign(completar, { sem_remy: true, motivo_sem_remy: motivoRemy(b.motivo_remy) });
     if (necessidades && !cliente.necessidades_especificas) completar.necessidades_especificas = necessidades;
     else if (necessidades && necessidades !== cliente.necessidades_especificas) {
       obs = [obs, `Necessidades informadas neste pedido: ${necessidades}`].filter(Boolean).join('\n');
@@ -532,7 +568,7 @@ app.post('/api/publico/pedidos', limitarPedidos, exigirConfiguracao, async (req,
   const anterior = b.retorno_de ? await pedidoPorToken(b.retorno_de) : null;
   const novo = await q(banco.from('agendamentos').insert({
     cliente_id: cliente.id, inicio, fim, status: 'solicitado', origem: 'cliente',
-    valor_total: total, observacao_cliente: obs || null,
+    valor_total: total, observacao_cliente: obs || null, sem_remy: semRemy || Boolean(cliente.sem_remy),
     retorno_de: anterior && anterior.cliente_id === cliente.id ? anterior.id : null,
   }).select('id, token').single());
 
@@ -576,6 +612,28 @@ app.patch('/api/publico/pedidos/:token', limitarAlteracoes, exigirConfiguracao, 
 });
 
 // CANCELAR: a cliente desiste do horário (pode ser até no mesmo dia).
+// CORRIGIR detalhes (recado, necessidades e Remy) — só enquanto a Lucy ainda não respondeu.
+// Nome e WhatsApp continuam só com a Lucy (ninguém com o link troca o contato da cliente).
+app.patch('/api/publico/pedidos/:token/detalhes', limitarAlteracoes, exigirConfiguracao, async (req, res) => {
+  const p = await pedidoPorToken(req.params.token);
+  if (!p) throw new ErroPublico(404, 'Pedido não encontrado. Confira o link.');
+  if (p.status !== 'solicitado' || Date.parse(p.inicio) <= Date.now()) {
+    throw new ErroPublico(409, 'A Lucy já respondeu este pedido. Para mudar algo, fale com ela pelo WhatsApp.');
+  }
+  const b = req.body ?? {};
+  const pedido = {}, cliente = {};
+  if ('observacao' in b) pedido.observacao_cliente = texto(b.observacao, 500) || null;
+  if ('necessidades' in b) cliente.necessidades_especificas = texto(b.necessidades, 500) || null;
+  if ('sem_remy' in b) {
+    pedido.sem_remy = b.sem_remy === true;
+    cliente.sem_remy = b.sem_remy === true;
+    cliente.motivo_sem_remy = b.sem_remy === true ? motivoRemy(b.motivo_remy) : null;
+  }
+  if (Object.keys(pedido).length) await q(banco.from('agendamentos').update(pedido).eq('id', p.id));
+  if (Object.keys(cliente).length) await q(banco.from('clientes').update(cliente).eq('id', p.cliente_id));
+  res.json(await respostaCliente(p.token));
+});
+
 app.post('/api/publico/pedidos/:token/cancelar', limitarAlteracoes, exigirConfiguracao, async (req, res) => {
   const p = await pedidoPorToken(req.params.token);
   if (!p) throw new ErroPublico(404, 'Pedido não encontrado. Confira o link.');
@@ -635,7 +693,7 @@ const TIPOS = {
     if (!/^([01]\d|2[0-3]):[0-5]\d(:00)?$/.test(String(v))) throw new Error();
     return String(v).slice(0, 5);
   },
-  opcao: (v, c) => { if (!c.opcoes.includes(v)) throw new Error(); return v; },
+  opcao: (v, c) => { if ((v === '' || v == null) && c.vazio) return null; if (!c.opcoes.includes(v)) throw new Error(); return v; },
   url: (v) => {
     const t = String(v ?? '').trim();
     if (!t) return null;
@@ -793,6 +851,7 @@ const CAMPOS_CONFIG = {
   chave_pix: { tipo: 'chavePix', rotulo: 'Chave Pix' },
   nome_recebedor_pix: { tipo: 'texto', max: 25, rotulo: 'Nome no Pix' },
   cidade_pix: { tipo: 'texto', max: 15, rotulo: 'Cidade no Pix' },
+  remy_ligado: { tipo: 'bool', rotulo: 'Mostrar o Remy no site' },
   retorno_momento: { tipo: 'opcao', opcoes: ['ao_finalizar', 'apos_pagamento'], rotulo: 'Quando oferecer retorno' },
   intervalo_agenda_min: { tipo: 'inteiro', min: 10, max: 120, padrao: 30, rotulo: 'Intervalo da agenda' },
   antecedencia_min_horas: { tipo: 'inteiro', min: 0, max: 168, padrao: 2, rotulo: 'Antecedência mínima' },
@@ -820,6 +879,8 @@ const CAMPOS_CLIENTE = {
   observacoes: { tipo: 'texto', max: 2000, rotulo: 'Anotações' },
   necessidades_especificas: { tipo: 'texto', max: 500, rotulo: 'Necessidades específicas' },
   aceita_lembrete_email: { tipo: 'bool', rotulo: 'Aceita lembrete por e-mail' },
+  sem_remy: { tipo: 'bool', rotulo: 'Prefere o Remy longe' },
+  motivo_sem_remy: { tipo: 'opcao', opcoes: MOTIVOS_REMY, vazio: true, rotulo: 'Motivo (Remy)' },
 };
 crud({ rota: 'clientes', tabela: 'clientes', campos: CAMPOS_CLIENTE, listar: false });
 
@@ -836,7 +897,7 @@ async function completarAgendamentos(lista) {
   if (!lista.length) return [];
   const idsClientes = [...new Set(lista.map((a) => a.cliente_id))];
   const [clientes, itens] = await Promise.all([
-    q(banco.from('clientes').select('id, nome, whatsapp, email, aceita_lembrete_email, alergias, necessidades_especificas').in('id', idsClientes)),
+    q(banco.from('clientes').select('id, nome, whatsapp, email, aceita_lembrete_email, alergias, necessidades_especificas, sem_remy, motivo_sem_remy').in('id', idsClientes)),
     q(banco.from('agendamento_servicos').select('agendamento_id, servico_id, nome, preco, duracao_min').in('agendamento_id', lista.map((a) => a.id))),
   ]);
   return lista.map((a) => ({
@@ -886,8 +947,28 @@ app.get('/api/lucy/agendamentos', ...soLucy, async (req, res) => {
     if (!dataValida(String(req.query.ate))) throw new ErroPublico(400, 'Data inválida.');
     consulta = consulta.lt('inicio', instante(somarDias(String(req.query.ate), 1), 0).toISOString());
   }
-  res.json(await completarAgendamentos(await q(consulta.order('inicio'))));
+  const lista = await completarAgendamentos(await q(consulta.order('inicio')));
+  res.json(await marcarConflitos(lista));
 });
+
+// Para cada pedido/horário ativo, lista os horários CONFIRMADOS que se cruzam com ele.
+async function marcarConflitos(lista) {
+  const ativos = lista.filter((a) => ['solicitado', 'agendado'].includes(a.status));
+  if (!ativos.length) return lista;
+  const de = ativos.reduce((m, a) => (a.inicio < m ? a.inicio : m), ativos[0].inicio);
+  const ate = ativos.reduce((m, a) => (a.fim > m ? a.fim : m), ativos[0].fim);
+  const confirmados = await q(banco.from('agendamentos').select('id, inicio, fim, cliente_id')
+    .eq('status', 'agendado').lt('inicio', ate).gt('fim', de));
+  const ids = [...new Set(confirmados.map((c) => c.cliente_id))];
+  const nomes = ids.length ? await q(banco.from('clientes').select('id, nome').in('id', ids)) : [];
+  return lista.map((a) => {
+    if (!['solicitado', 'agendado'].includes(a.status)) return a;
+    const ini = Date.parse(a.inicio), fim = Date.parse(a.fim);
+    const conflitos = confirmados.filter((c) => c.id !== a.id && Date.parse(c.inicio) < fim && Date.parse(c.fim) > ini)
+      .map((c) => ({ inicio: c.inicio, fim: c.fim, nome: nomes.find((n) => n.id === c.cliente_id)?.nome ?? '' }));
+    return conflitos.length ? { ...a, conflitos } : a;
+  });
+}
 
 async function agendamentoCompleto(id) {
   const a = await q(banco.from('agendamentos').select('*').eq('id', id).maybeSingle());
@@ -916,6 +997,7 @@ app.post('/api/lucy/agendamentos', ...soLucy, async (req, res) => {
   }
   const { lista, duracao, total } = await servicosEscolhidos(b.servicos);
   const { inicio, fim } = periodo(b.inicio, b.fim, duracao);
+  if (await avisarSeChocar(res, inicio, fim, null, b.forcar)) return;
   const novo = await q(banco.from('agendamentos').insert({
     cliente_id: clienteId, inicio, fim, status: 'agendado', origem: 'lucy',
     confirmado_em: new Date().toISOString(), valor_total: total,
@@ -941,6 +1023,8 @@ app.patch('/api/lucy/agendamentos/:id', ...soLucy, async (req, res) => {
   else if (novaLista) Object.assign(mudar, periodo(atual.inicio, null, duracao));
   if ('observacao' in b) mudar.observacao_cliente = texto(b.observacao, 500) || null;
   if (!Object.keys(mudar).length) throw new ErroPublico(400, 'Nada para alterar.');
+  if (atual.status === 'agendado' && mudar.inicio
+    && await avisarSeChocar(res, mudar.inicio, mudar.fim, atual.id, b.forcar)) return;
   await q(banco.from('agendamentos').update(mudar).eq('id', atual.id));
   if (novaLista) {
     await q(banco.from('agendamento_servicos').delete().eq('agendamento_id', atual.id));
@@ -961,6 +1045,8 @@ app.post('/api/lucy/agendamentos/:id/:acao', ...soLucy, async (req, res, next) =
   const acao = ACOES[req.params.acao];
   if (!acao) return next();  // não é uma destas ações (ex.: "pagamento", mais abaixo)
   const atual = await agendamentoCompleto(exigirId(req.params.id));
+  if (req.params.acao === 'confirmar' && acao.de.includes(atual.status)
+    && await avisarSeChocar(res, atual.inicio, atual.fim, atual.id, req.body?.forcar)) return;
   if (!acao.de.includes(atual.status)) {
     throw new ErroPublico(409, `Não dá para ${req.params.acao} um agendamento com situação "${STATUS_TEXTO[atual.status]}".`);
   }
@@ -1116,6 +1202,73 @@ app.get('/api/lucy/retornos', ...soLucy, async (req, res) => {
     } : null;
   }).filter(Boolean).sort((x, y) => x.faltam_dias - y.faltam_dias);
   res.json(resultado);
+});
+
+
+// ---------------------------------------------------------------------
+// 8b. RELATÓRIOS (Etapa 7) — tudo calculado a partir dos dados que já existem.
+//     Período: pelo dia do atendimento (de/ate em AAAA-MM-DD, fuso de Brasília).
+// ---------------------------------------------------------------------
+app.get('/api/lucy/relatorio', ...soLucy, async (req, res) => {
+  const hoje = hojeNoSalao();
+  const de = RE_DATA.test(String(req.query.de)) ? String(req.query.de) : `${hoje.slice(0, 7)}-01`;
+  const ate = RE_DATA.test(String(req.query.ate)) ? String(req.query.ate) : hoje;
+  if (de > ate) throw new ErroPublico(400, 'A data inicial precisa ser antes da final.');
+  if (Date.parse(ate) - Date.parse(de) > 366 * 86400000) throw new ErroPublico(400, 'Escolha um período de até 1 ano.');
+  const ini = instante(de, 0).toISOString(), fim = instante(somarDias(ate, 1), 0).toISOString();
+
+  const [brutos, novas] = await Promise.all([
+    q(banco.from('agendamentos').select('id, cliente_id, inicio, status, valor_total, pago, forma_pagamento, origem')
+      .gte('inicio', ini).lt('inicio', fim).order('inicio')),
+    q(banco.from('clientes').select('id').gte('criado_em', ini).lt('criado_em', fim)),
+  ]);
+  const lista = await completarAgendamentos(brutos);
+  const avaliacoes = lista.length
+    ? await q(banco.from('avaliacoes').select('agendamento_id, nota').in('agendamento_id', lista.map((a) => a.id))) : [];
+
+  const soma = (xs) => Math.round(xs.reduce((t, a) => t + Number(a.valor_total), 0) * 100) / 100;
+  const conta = (st) => lista.filter((a) => a.status === st).length;
+  const concluidos = lista.filter((a) => a.status === 'concluido');
+  const pagos = lista.filter((a) => a.pago);
+
+  const porServico = new Map();
+  for (const a of concluidos) for (const s of a.servicos) {
+    const x = porServico.get(s.nome) ?? { nome: s.nome, quantidade: 0, valor: 0 };
+    x.quantidade += 1; x.valor = Math.round((x.valor + s.preco) * 100) / 100;
+    porServico.set(s.nome, x);
+  }
+  const porCliente = new Map();
+  for (const a of concluidos) {
+    const x = porCliente.get(a.cliente_id) ?? { id: a.cliente_id, nome: a.cliente?.nome ?? '—', visitas: 0, valor: 0 };
+    x.visitas += 1; x.valor = Math.round((x.valor + a.valor_total) * 100) / 100;
+    porCliente.set(a.cliente_id, x);
+  }
+  const notas = avaliacoes.map((a) => a.nota);
+
+  res.json({
+    de, ate,
+    atendimentos: {
+      concluidos: concluidos.length, confirmados: conta('agendado'), pedidos: conta('solicitado'),
+      faltas: conta('faltou'), cancelados: conta('cancelado'), recusados: conta('recusado'),
+      pelo_site: lista.filter((a) => a.origem === 'cliente').length,
+    },
+    dinheiro: {
+      recebido: soma(pagos),
+      por_forma: Object.fromEntries(['pix', 'cartao', 'dinheiro'].map((f) => [f, soma(pagos.filter((a) => a.forma_pagamento === f))])),
+      a_receber: soma(concluidos.filter((a) => !a.pago)),
+      a_receber_qtd: concluidos.filter((a) => !a.pago).length,
+      previsto: soma(lista.filter((a) => a.status === 'agendado' && !a.pago)),
+    },
+    servicos: [...porServico.values()].sort((x, y) => y.quantidade - x.quantidade || y.valor - x.valor),
+    clientes: [...porCliente.values()].sort((x, y) => y.visitas - x.visitas || y.valor - x.valor).slice(0, 10),
+    clientes_novas: novas.length,
+    avaliacoes: { quantidade: notas.length, media: notas.length ? Math.round((notas.reduce((t, n) => t + n, 0) / notas.length) * 10) / 10 : null },
+    linhas: lista.map((a) => ({
+      inicio: a.inicio, cliente: a.cliente?.nome ?? '', whatsapp: a.cliente?.whatsapp ?? '',
+      servicos: a.servicos.map((s) => s.nome).join(' + '), valor: a.valor_total, status: a.status,
+      pago: a.pago, forma_pagamento: a.forma_pagamento, nota: avaliacoes.find((v) => v.agendamento_id === a.id)?.nota ?? null,
+    })),
+  });
 });
 
 

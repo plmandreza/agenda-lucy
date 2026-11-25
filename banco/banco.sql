@@ -26,7 +26,7 @@ create table if not exists configuracoes (
   id                      smallint primary key default 1 check (id = 1),
   nome_salao              text not null default 'Lucy Cabeleireira',
   endereco                text,
-  whatsapp_lucy           text,   -- só números, com 55 + DDD: 5511999998888
+  whatsapp_lucy           text,   -- só números, com 55 + DDD: 5511900000000
   email_lucy              text,
   chave_pix               text,
   nome_recebedor_pix      text,   -- até 25 letras, sem acento (exigência do Pix)
@@ -124,7 +124,7 @@ create table if not exists dias_especiais (
 create table if not exists clientes (
   id                        uuid primary key default gen_random_uuid(),
   nome                      text not null,
-  whatsapp                  text not null unique,  -- só números: 5511999998888
+  whatsapp                  text not null unique,  -- só números: 5511900000000
   email                     text,
   data_nascimento           date,
   alergias                  text,
@@ -166,12 +166,9 @@ create table if not exists agendamentos (
   lembrete_enviado_em  timestamptz,
   retorno_de           uuid references agendamentos(id) on delete set null,
   criado_em            timestamptz not null default now(),
-  check (fim > inicio),
-  -- Trava de segurança: impede dois horários CONFIRMADOS ao mesmo tempo
-  -- (a Lucy atende uma cliente por vez). Pedidos ainda não confirmados
-  -- podem coincidir; a trava age na hora em que a Lucy confirma.
-  constraint sem_horario_duplo
-    exclude using gist (tstzrange(inicio, fim) with &&) where (status = 'agendado')
+  check (fim > inicio)
+  -- Dois horários ao mesmo tempo: o banco NÃO bloqueia. O sistema avisa a Lucy
+  -- ("já tem a Fulana nesse horário") e ela decide se confirma mesmo assim.
 );
 create index if not exists agendamentos_inicio_idx  on agendamentos (inicio);
 create index if not exists agendamentos_cliente_idx on agendamentos (cliente_id);
@@ -297,6 +294,27 @@ alter default privileges in schema public
   grant select, insert, update, delete on tables to service_role;
 alter default privileges in schema public
   grant usage, select on sequences to service_role;
+
+
+-- ---------------------------------------------------------------------
+-- 14. ETAPA 7: O REMY (o gato do salão)
+-- ---------------------------------------------------------------------
+-- O Remy é o gato do salão. Quem tem medo, alergia ou não gosta de gatos
+-- pode pedir para ele ficar longe — e a Lucy vê isso no painel.
+alter table clientes
+  add column if not exists sem_remy boolean not null default false,
+  add column if not exists motivo_sem_remy text
+    check (motivo_sem_remy in ('medo','alergia','nao_gosto','outro'));
+
+alter table agendamentos
+  add column if not exists sem_remy boolean not null default false;
+
+-- Horários ao mesmo tempo: em vez de bloquear, o sistema avisa e a Lucy decide.
+alter table agendamentos drop constraint if exists sem_horario_duplo;
+
+-- A Lucy pode desligar tudo do Remy no site (ex.: se ele não estiver no salão).
+alter table configuracoes
+  add column if not exists remy_ligado boolean not null default true;
 
 
 -- Pronto! Se apareceu "Success. No rows returned", deu tudo certo.

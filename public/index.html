@@ -247,6 +247,19 @@
       .quatro-colunas { grid-template-columns: 1fr 1fr; }
     }
 
+    .piada-remy { font-style: italic; color: var(--texto-suave); }
+    .remy-campo { border: 1px solid var(--borda); border-radius: 12px; padding: .75rem 1rem; margin: 1rem 0 0; }
+    .remy-campo legend { font-weight: 700; padding: 0 .35rem; }
+    details.corrigir { margin-top: 1rem; border-top: 1px dashed var(--borda); padding-top: .75rem; }
+    details.corrigir summary { cursor: pointer; font-weight: 700; color: var(--vinho); min-height: 2.75rem; display: flex; align-items: center; }
+    .periodo { display: flex; flex-wrap: wrap; align-items: flex-end; gap: .5rem; margin: 1rem 0 .5rem; }
+    .periodo label { margin: 0; flex: 1 1 9rem; }
+    .periodo input { margin-top: .25rem; }
+    .numeros { display: grid; grid-template-columns: repeat(auto-fit, minmax(6rem, 1fr)); gap: .5rem; margin-bottom: .75rem; }
+    .numero { background: var(--rosa-claro); border-radius: 12px; padding: .75rem; display: flex; flex-direction: column; }
+    .numero strong { font-size: 1.2rem; color: var(--vinho); }
+    .numero small { color: var(--texto-suave); font-size: .8rem; }
+    .ranking { margin: 0; padding-left: 1.4rem; } .ranking li { margin: .35rem 0; }
     .qr-pix { max-width: 15rem; margin: .5rem auto; background: #fff; border: 1px solid var(--borda); border-radius: 12px; padding: .4rem; }
     .qr-pix svg { display: block; width: 100%; height: auto; }
     .copia-cola { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: .72rem; min-height: 4.5rem; word-break: break-all; color: var(--texto-suave); }
@@ -379,7 +392,7 @@
     <path d="M14.12 14.12a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
 
   class ErroApi extends Error {
-    constructor(mensagem, status) { super(mensagem); this.status = status; }
+    constructor(mensagem, status, dados = null) { super(mensagem); this.status = status; this.dados = dados; }
   }
 
   // Conversa com o server.js. Se o crachá da Lucy venceu, renova sozinho uma vez.
@@ -406,7 +419,7 @@
       return api(caminho, { metodo, corpo, autenticado, renovado: true });
     }
     const dados = await resposta.json().catch(() => ({}));
-    if (!resposta.ok) throw new ErroApi(dados.erro || 'Algo deu errado. Tente de novo.', resposta.status);
+    if (!resposta.ok) throw new ErroApi(dados.erro || 'Algo deu errado. Tente de novo.', resposta.status, dados);
     return dados;
   }
 
@@ -626,6 +639,76 @@
 
   const FORMAS_TXT = { pix: 'Pix', cartao: 'cartão', dinheiro: 'dinheiro' };
 
+  // --- O REMY, o gato do salão (e "secretário" da Lucy) ---------------
+  // Quem tem medo, alergia ou não gosta de gatos pode pedir para ele ficar longe.
+  // Essa escolha fica guardada neste aparelho e vai junto com o pedido: daí em
+  // diante, o site não mostra mais brincadeiras do Remy para essa pessoa.
+  const MOTIVOS_REMY = [['medo', 'Tenho medo'], ['alergia', 'Tenho alergia'], ['nao_gosto', 'Não gosto de gatos'], ['outro', 'Outro motivo']];
+  const MOTIVO_REMY_TXT = { medo: 'medo', alergia: 'alergia', nao_gosto: 'não gosta', outro: 'outro motivo' };
+  const PIADAS_REMY = [
+    'O Remy é o secretário da Lucy: confere a agenda deitando em cima dela.',
+    'Massagem nos pés felina grátis — o Remy garante que é terapêutica (e você não pediu).',
+    'Carinho no gato está incluso. A mordidinha no final também. Sem custo adicional.',
+    'O Remy não faz escova, mas faz questão de supervisionar todas.',
+    'Atendimento ao cliente: o Remy recebe você na porta e some quando você chama.',
+    'O Remy tem um cargo de confiança: vigiar o secador. Nunca deixou ele fugir.',
+  ];
+  const semRemy = {
+    ler: () => guardado.ler('lucy.semRemy', null),       // null ou { motivo }
+    salvar: (motivo) => guardado.salvar('lucy.semRemy', { motivo }),
+    apagar: () => guardado.apagar('lucy.semRemy'),
+  };
+  const remyAparece = (d) => Boolean(d?.remy) && !semRemy.ler();
+
+  // --- "Salvar na agenda do celular" (arquivo .ics e Google Agenda) ----
+  const dataIcs = (iso) => new Date(iso).toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+  function arquivoAgenda(p, salao) {
+    const linhaIcs = (t) => String(t ?? '').replace(/\\/g, '\\\\').replace(/\n/g, '\\n').replace(/[,;]/g, (m) => '\\' + m);
+    const nome = salao?.salao?.nome || 'Lucy Cabeleireira';
+    return [
+      'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//agenda-lucy//PT-BR', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH',
+      'BEGIN:VEVENT', `UID:${p.token}@agenda-lucy`, `DTSTAMP:${dataIcs(new Date().toISOString())}`,
+      `DTSTART:${dataIcs(p.inicio)}`, `DTEND:${dataIcs(p.fim)}`,
+      `SUMMARY:${linhaIcs(`${nome}: ${servicosTexto(p)}`)}`,
+      salao?.salao?.endereco ? `LOCATION:${linhaIcs(salao.salao.endereco)}` : '',
+      `DESCRIPTION:${linhaIcs(`Seu horário com a Lucy. Para ver, remarcar ou cancelar: ${enderecoSite()}#/pedido/${p.token}`)}`,
+      'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Lembrete do salão', 'TRIGGER:-PT2H', 'END:VALARM',
+      'END:VEVENT', 'END:VCALENDAR',
+    ].filter(Boolean).join('\r\n');
+  }
+  const linkGoogleAgenda = (p, salao) => 'https://calendar.google.com/calendar/render?' + new URLSearchParams({
+    action: 'TEMPLATE', text: `${salao?.salao?.nome || 'Lucy Cabeleireira'}: ${servicosTexto(p)}`,
+    dates: `${dataIcs(p.inicio)}/${dataIcs(p.fim)}`, location: salao?.salao?.endereco ?? '',
+    details: `Para ver, remarcar ou cancelar: ${enderecoSite()}#/pedido/${p.token}`,
+  });
+
+  // Campo "Remy longe" (usado no pedido e na correção dos detalhes)
+  function htmlCampoRemy(marcado, motivo, prefixo) {
+    return `
+      <fieldset class="remy-campo">
+        <legend>O Remy, o gato do salão</legend>
+        <label class="opcao"><input type="checkbox" id="${prefixo}-sem-remy" ${marcado ? 'checked' : ''}>
+          <span class="info">Prefiro que o Remy fique longe durante o meu atendimento</span></label>
+        <div id="${prefixo}-motivo-remy" ${marcado ? '' : 'hidden'}>
+          <label for="${prefixo}-motivo">Pode contar o motivo? <span class="opcional">(ajuda a Lucy a se preparar)</span></label>
+          <select id="${prefixo}-motivo">${MOTIVOS_REMY.map(([v, t]) => `<option value="${v}" ${v === motivo ? 'selected' : ''}>${t}</option>`).join('')}</select>
+          <p class="suave" id="${prefixo}-aviso-alergia" ${motivo === 'alergia' ? '' : 'hidden'} style="margin:.5rem 0 0">
+            Mesmo com o Remy longe, pode haver pelinhos no salão. Se a alergia for forte, conte no recado.</p>
+        </div>
+      </fieldset>`;
+  }
+  function ligarCampoRemy(prefixo) {
+    const $c = document.getElementById(`${prefixo}-sem-remy`);
+    if (!$c) return;
+    const $m = document.getElementById(`${prefixo}-motivo`);
+    $c.onchange = () => { document.getElementById(`${prefixo}-motivo-remy`).hidden = !$c.checked; };
+    $m.onchange = () => { document.getElementById(`${prefixo}-aviso-alergia`).hidden = $m.value !== 'alergia'; };
+  }
+  const lerCampoRemy = (prefixo) => {
+    const $c = document.getElementById(`${prefixo}-sem-remy`);
+    return $c ? { sem_remy: $c.checked, motivo_remy: $c.checked ? document.getElementById(`${prefixo}-motivo`).value : null } : {};
+  };
+
 
   // ===================================================================
   // 3. TELAS DA CLIENTE
@@ -683,13 +766,14 @@
           ${esc(d.catalogos.map((c) => c.marca).join(', ').replace(/, ([^,]*)$/, ' e $1'))} ↓</a>` : ''}
       </section>
       ${promocoes}
+      ${d.remy ? '<section class="cartao" id="remy" aria-labelledby="t-remy"></section>' : ''}
       <section class="cartao" aria-labelledby="t-servicos">
         <h2 id="t-servicos">Serviços</h2>
         <ul class="servicos">
           ${d.servicos.map((s) => `
             <li>
               <div><span class="nome">${esc(s.nome)}</span>
-                <span class="suave" style="display:block">${s.descricao ? esc(s.descricao) + ' · ' : ''}${fmt.duracao(s.duracao_min)}</span></div>
+                ${s.descricao ? `<span class="suave" style="display:block">${esc(s.descricao)}</span>` : ''}</div>
               <span class="preco">${fmt.reais(s.preco)}</span>
             </li>`).join('')}
         </ul>
@@ -702,6 +786,44 @@
         ${zap}
       </section>
       <p class="sistema" id="sistema">Verificando o sistema…</p>`;
+
+    // Cartão do Remy (ou só um recado discreto, para quem pediu ele longe)
+    function desenharRemy() {
+      const $r = document.getElementById('remy');
+      if (!$r) return;
+      const longe = semRemy.ler();
+      if (longe) {
+        $r.innerHTML = `
+          <h2 id="t-remy">Sobre o gato do salão</h2>
+          <p>Combinado: quando você pedir um horário, a Lucy vai saber que o gato deve ficar longe durante o seu atendimento.</p>
+          <button class="secundario pequeno" id="remy-volta">Mudei de ideia</button>`;
+        document.getElementById('remy-volta').onclick = () => { semRemy.apagar(); desenharRemy(); };
+        return;
+      }
+      let i = Math.floor(Math.random() * PIADAS_REMY.length);
+      $r.innerHTML = `
+        <h2 id="t-remy">Conheça o Remy 🐾</h2>
+        <p>O Remy é o gato do salão e se acha o secretário da Lucy.</p>
+        <p class="piada-remy" id="piada" aria-live="polite">${esc(PIADAS_REMY[i])}</p>
+        <div class="acoes-item">
+          <button class="secundario pequeno" id="outra-piada">Outra do Remy</button>
+          <button class="secundario pequeno" id="remy-longe" aria-expanded="false">Prefiro que ele fique longe</button>
+        </div>
+        <div id="remy-motivos" hidden>
+          <p class="suave" style="margin:.75rem 0 .5rem">Sem problema! Qual o motivo? <span class="opcional">(opcional)</span></p>
+          <div class="acoes-item">${MOTIVOS_REMY.map(([v, t]) => `<button class="secundario pequeno" data-motivo="${v}">${t}</button>`).join('')}</div>
+        </div>`;
+      document.getElementById('outra-piada').onclick = () => {
+        i = (i + 1) % PIADAS_REMY.length;
+        document.getElementById('piada').textContent = PIADAS_REMY[i];
+      };
+      document.getElementById('remy-longe').onclick = (e) => {
+        document.getElementById('remy-motivos').hidden = false;
+        e.currentTarget.setAttribute('aria-expanded', 'true');
+      };
+      $r.querySelectorAll('[data-motivo]').forEach((b) => { b.onclick = () => { semRemy.salvar(b.dataset.motivo); desenharRemy(); }; });
+    }
+    desenharRemy();
 
     // Botões de copiar o código de consultora e atalho para os catálogos
     $app.querySelectorAll('[data-copiar-codigo]').forEach((b) => {
@@ -736,6 +858,7 @@
       passo: 1, servicos: new Set(), data: null, inicio: null, horarios: [], remarcar: null, pedido: null,
       ...guardado.ler('lucy.cliente', {}),  // nome, whatsapp e e-mail usados da última vez neste aparelho
       necessidades: '', observacao: '',
+      semRemy: Boolean(semRemy.ler()), motivoRemy: semRemy.ler()?.motivo ?? 'medo',
     };
     if (remarcar) {
       try {
@@ -768,7 +891,6 @@
     const lista = salaoCache.servicos.filter((s) => ag.servicos.has(s.id));
     return {
       lista,
-      duracao: lista.reduce((t, s) => t + s.duracao_min, 0),
       total: lista.reduce((t, s) => t + s.preco, 0),
     };
   }
@@ -811,7 +933,7 @@
             <label class="opcao">
               <input type="checkbox" value="${esc(s.id)}" ${ag.servicos.has(s.id) ? 'checked' : ''}>
               <span class="info"><span class="nome">${esc(s.nome)}</span>
-                <span class="suave">${s.descricao ? esc(s.descricao) + ' · ' : ''}${fmt.duracao(s.duracao_min)}</span></span>
+                ${s.descricao ? `<span class="suave">${esc(s.descricao)}</span>` : ''}</span>
               <strong>${fmt.reais(s.preco)}</strong>
             </label>`).join('')}
         </fieldset>
@@ -825,7 +947,7 @@
     const atualizar = () => {
       const e = escolha();
       document.getElementById('resumo').innerHTML = e.lista.length
-        ? `<span>${e.lista.length} serviço${e.lista.length > 1 ? 's' : ''} · ${fmt.duracao(e.duracao)}</span><span>${fmt.reais(e.total)}</span>`
+        ? `<span>${e.lista.length} serviço${e.lista.length > 1 ? 's' : ''}</span><span>${fmt.reais(e.total)}</span>`
         : '<span>Nenhum serviço escolhido</span>';
       document.getElementById('continuar').disabled = !e.lista.length;
     };
@@ -859,7 +981,6 @@
     $app.innerHTML = `
       <div class="cartao">
         ${cabecalhoDoPasso('Escolha o dia e o horário')}
-        <p class="suave">Duração prevista: ${fmt.duracao(escolha().duracao)}</p>
         ${ag.sugestaoRetorno ? `<p class="mensagem atencao">Retorno sugerido: por volta de <strong>${esc(fmt.partesDoDia(ag.sugestaoRetorno).longa)}</strong>.</p>` : ''}
         <div class="dias" role="group" aria-label="Dias">
           ${dias.map((d) => {
@@ -945,6 +1066,7 @@
         <textarea id="necessidades" maxlength="500">${esc(ag.necessidades)}</textarea>
         <label for="observacao">Quer deixar algum recado? <span class="dica">Opcional.</span></label>
         <textarea id="observacao" maxlength="500">${esc(ag.observacao)}</textarea>
+        ${salaoCache?.remy ? htmlCampoRemy(ag.semRemy, ag.motivoRemy, 'pd') : ''}
         <p class="suave">Seus dados ficam só com a Lucy e são usados apenas para o seu atendimento.</p>
         <p class="mensagem erro" id="msg" role="alert"></p>
         <div class="acoes">
@@ -959,7 +1081,10 @@
       ag.email = document.getElementById('email').value.trim();
       ag.necessidades = document.getElementById('necessidades').value.trim();
       ag.observacao = document.getElementById('observacao').value.trim();
+      const r = lerCampoRemy('pd');
+      if ('sem_remy' in r) { ag.semRemy = r.sem_remy; if (r.motivo_remy) ag.motivoRemy = r.motivo_remy; }
     };
+    ligarCampoRemy('pd');
     document.getElementById('voltar').onclick = () => { ler(); irParaPasso(-1); };
     document.getElementById('form-dados').onsubmit = (ev) => {
       ev.preventDefault();
@@ -984,7 +1109,7 @@
       <div class="cartao">
         ${cabecalhoDoPasso(ag.remarcar ? 'Confira o novo horário' : 'Confira seu pedido')}
         <p class="quando">${esc(fmt.dataLonga(ag.inicio))}</p>
-        <p class="suave">${esc(fmt.hora(ag.inicio))} às ${esc(fmt.hora(Date.parse(ag.inicio) + e.duracao * 60000))}</p>
+        <p class="suave">Às ${esc(fmt.hora(ag.inicio))}</p>
         <ul class="itens">
           ${e.lista.map((s) => `<li><span>${esc(s.nome)}</span><span>${fmt.reais(s.preco)}</span></li>`).join('')}
           <li class="total"><span>Total</span><span>${fmt.reais(e.total)}</span></li>
@@ -992,7 +1117,8 @@
         ${ag.remarcar ? '' : `
           <p class="suave" style="margin-top:1rem">${esc(ag.nome)} · ${esc(ag.whatsapp)}${ag.email ? ' · ' + esc(ag.email) : ''}</p>
           ${ag.necessidades ? `<p class="suave">Necessidades: ${esc(ag.necessidades)}</p>` : ''}
-          ${ag.observacao ? `<p class="suave">Recado: ${esc(ag.observacao)}</p>` : ''}`}
+          ${ag.observacao ? `<p class="suave">Recado: ${esc(ag.observacao)}</p>` : ''}
+          ${ag.semRemy && salaoCache?.remy ? `<p class="suave">O Remy fica longe (${esc(MOTIVO_REMY_TXT[ag.motivoRemy])}).</p>` : ''}`}
         <p class="mensagem atencao">Este é um <strong>pedido</strong>. A Lucy vai confirmar o horário com você.
           O pagamento é feito no salão (Pix, cartão ou dinheiro).</p>
         <p class="mensagem erro" id="msg" role="alert"></p>
@@ -1018,7 +1144,9 @@
             nome: ag.nome, whatsapp: ag.whatsapp, email: ag.email,
             necessidades: ag.necessidades, observacao: ag.observacao,
             servicos: [...ag.servicos], inicio: ag.inicio, retorno_de: ag.retornoDe ?? null,
+            sem_remy: Boolean(ag.semRemy && salaoCache?.remy), motivo_remy: ag.semRemy ? ag.motivoRemy : null,
           } });
+          if (salaoCache?.remy) { if (ag.semRemy) semRemy.salvar(ag.motivoRemy); else semRemy.apagar(); }
           guardado.salvar('lucy.cliente', { nome: ag.nome, whatsapp: ag.whatsapp, email: ag.email });
         }
         meusPedidos.adicionar(p.token);
@@ -1065,7 +1193,8 @@
       ? `<p class="mensagem sucesso" role="status"><strong>Pedido enviado, ${esc(p.primeiro_nome)}!</strong> A Lucy vai ver e confirmar o seu horário.</p>`
       : params.get('remarcado')
         ? '<p class="mensagem sucesso" role="status"><strong>Horário remarcado!</strong> A Lucy vai confirmar o novo horário.</p>'
-        : params.get('cancelado') ? '<p class="mensagem sucesso" role="status">Pedido cancelado.</p>' : '';
+        : params.get('cancelado') ? '<p class="mensagem sucesso" role="status">Pedido cancelado.</p>'
+        : params.get('corrigido') ? '<p class="mensagem sucesso" role="status">Correção salva! A Lucy vai ver junto com o pedido.</p>' : '';
 
     $app.innerHTML = `
       <button class="voltar" data-voltar="#/">← Voltar</button>
@@ -1074,12 +1203,29 @@
       <div class="cartao">
         <span class="selo ${esc(p.status)}">${esc(p.status_texto)}</span>
         <p class="quando">${esc(fmt.dataLonga(p.inicio))}</p>
-        <p class="suave">${esc(fmt.hora(p.inicio))} às ${esc(fmt.hora(p.fim))}</p>
+        <p class="suave">Às ${esc(fmt.hora(p.inicio))}</p>
         <ul class="itens">
           ${p.servicos.map((s) => `<li><span>${esc(s.nome)}</span><span>${fmt.reais(s.preco)}</span></li>`).join('')}
           <li class="total"><span>Total</span><span>${fmt.reais(p.valor_total)}</span></li>
         </ul>
         ${p.observacao_cliente ? `<p class="suave" style="margin-top:1rem;white-space:pre-line">Recado: ${esc(p.observacao_cliente)}</p>` : ''}
+        ${p.necessidades ? `<p class="suave" style="white-space:pre-line">Necessidades: ${esc(p.necessidades)}</p>` : ''}
+        ${salao?.remy && p.sem_remy ? '<p class="suave">Combinado: o gato do salão vai ficar longe durante o seu atendimento.</p>'
+          : salao?.remy && !semRemy.ler() && p.status === 'solicitado' ? '<p class="suave piada-remy">O Remy, secretário do salão, já deixou seu pedido em cima da mesa da Lucy. 🐾</p>' : ''}
+        ${p.pode_editar_detalhes ? `
+          <details class="corrigir" ${params.get('corrigir') ? 'open' : ''}>
+            <summary>Corrigir recado ou necessidades</summary>
+            <form id="form-detalhes" novalidate>
+              <label for="det-necessidades">Necessidades específicas <span class="opcional">(opcional)</span></label>
+              <textarea id="det-necessidades" maxlength="500">${esc(p.necessidades ?? '')}</textarea>
+              <label for="det-observacao">Recado para a Lucy <span class="opcional">(opcional)</span></label>
+              <textarea id="det-observacao" maxlength="500">${esc(p.observacao_cliente ?? '')}</textarea>
+              ${salao?.remy ? htmlCampoRemy(p.sem_remy, p.motivo_remy ?? semRemy.ler()?.motivo ?? 'medo', 'det') : ''}
+              <p class="suave">Nome e WhatsApp, só a Lucy muda: fale com ela se precisar.</p>
+              <p class="mensagem erro" id="msg-det" role="alert"></p>
+              <button type="submit" class="botao-largo">Salvar correção</button>
+            </form>
+          </details>` : ''}
         ${p.pode_alterar ? `
           <div class="acoes">
             <a class="botao secundario" href="#/agendar?remarcar=${esc(p.token)}">Remarcar</a>
@@ -1088,6 +1234,15 @@
           <div id="confirmar"></div>` : ''}
         ${!tipoAviso && botaoZap ? `<div style="margin-top:.75rem">${botaoZap}</div>` : ''}
       </div>
+      ${p.status === 'agendado' && Date.parse(p.inicio) > Date.now() ? `
+      <div class="cartao">
+        <h2>Salvar na agenda do celular</h2>
+        <p class="suave">Assim o celular te lembra 2 horas antes.</p>
+        <div class="lista-links">
+          <button class="secundario" id="baixar-ics">Salvar na agenda (iPhone ou Android)</button>
+          <a class="botao secundario" href="${esc(linkGoogleAgenda(p, salao))}" target="_blank" rel="noopener">Abrir no Google Agenda</a>
+        </div>
+      </div>` : ''}
       ${p.retorno ? `
       <div class="cartao destaque">
         <h2>Que tal já deixar seu retorno marcado?</h2>
@@ -1136,6 +1291,31 @@
         </div>
       </div>
       <a class="botao secundario botao-largo" href="#/agendar">Fazer outro pedido</a>`;
+
+    // Salvar na agenda: baixa um arquivo .ics (o celular abre direto na agenda)
+    document.getElementById('baixar-ics')?.addEventListener('click', () => {
+      const url = URL.createObjectURL(new Blob([arquivoAgenda(p, salao)], { type: 'text/calendar;charset=utf-8' }));
+      const $a = Object.assign(document.createElement('a'), { href: url, download: 'horario-lucy-cabeleireira.ics' });
+      document.body.appendChild($a); $a.click(); $a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    });
+
+    // Corrigir recado, necessidades e Remy (antes da Lucy responder)
+    ligarCampoRemy('det');
+    const $det = document.getElementById('form-detalhes');
+    if ($det) $det.onsubmit = async (ev) => {
+      ev.preventDefault();
+      const $b = $det.querySelector('button[type=submit]');
+      $b.disabled = true; $b.textContent = 'Salvando…';
+      try {
+        const remy = lerCampoRemy('det');
+        await api(`/api/publico/pedidos/${encodeURIComponent(p.token)}/detalhes`, { metodo: 'PATCH', corpo: {
+          necessidades: document.getElementById('det-necessidades').value.trim(),
+          observacao: document.getElementById('det-observacao').value.trim(), ...remy } });
+        if ('sem_remy' in remy) { if (remy.sem_remy) semRemy.salvar(remy.motivo_remy); else semRemy.apagar(); }
+        await telaPedido(p.token, new URLSearchParams({ corrigido: '1' }));
+      } catch (e) { document.getElementById('msg-det').textContent = e.message; $b.disabled = false; $b.textContent = 'Salvar correção'; }
+    };
 
     // Pagamento: escolher a forma e, se for Pix, mostrar o QR code
     $app.querySelectorAll('[data-forma]').forEach((b) => {
@@ -1259,7 +1439,7 @@
   // ===================================================================
   const ABAS = [
     ['pedidos', 'Pedidos'], ['agenda', 'Agenda'], ['retornos', 'Retornos'], ['clientes', 'Clientes'], ['servicos', 'Serviços'],
-    ['horarios', 'Horários'], ['promocoes', 'Promoções'], ['salao', 'Salão'], ['avaliacoes', 'Avaliações'],
+    ['horarios', 'Horários'], ['promocoes', 'Promoções'], ['salao', 'Salão'], ['relatorios', 'Relatórios'], ['avaliacoes', 'Avaliações'],
   ];
   const painelApi = (caminho, opcoes = {}) => api('/api/lucy' + caminho, { ...opcoes, autenticado: true });
   const hojeNoSalao = () => dataNoFuso(new Date());
@@ -1385,6 +1565,18 @@
   }
 
   // Envia um formulário e mostra o erro dentro dele, se houver.
+  // Se o servidor avisar que já tem cliente confirmada no horário, pergunta à Lucy.
+  // Devolve o resultado, ou null se ela preferir não seguir.
+  async function seChocarPerguntar(chamar) {
+    try { return await chamar(false); } catch (e) {
+      if (!(e.status === 409 && e.dados?.conflito)) throw e;
+      const quem = e.dados.conflitos.map((c) => `<strong>${esc(c.nome)}</strong> (${fmt.hora(c.inicio)} às ${fmt.hora(c.fim)})`).join(', ');
+      const sim = await perguntar(`Nesse horário já tem ${quem} confirmada.<br>Quer confirmar mesmo assim? As duas ficam no mesmo horário.`,
+        { sim: 'Confirmar mesmo assim', nao: 'Não' });
+      return sim ? chamar(true) : null;
+    }
+  }
+
   async function enviarFormulario(form, acao) {
     const $b = form.querySelector('button[type=submit]');
     const $msg = form.querySelector('.msg-form');
@@ -1490,7 +1682,7 @@
     if (!cfgPainel) cfgPainel = await painelApi('/configuracoes').catch(() => null);
     const telas = {
       pedidos: abaPedidos, agenda: abaAgenda, retornos: abaRetornos, clientes: abaClientes, servicos: abaServicos,
-      horarios: abaHorarios, promocoes: abaPromocoes, salao: abaSalao, avaliacoes: abaAvaliacoes,
+      horarios: abaHorarios, promocoes: abaPromocoes, salao: abaSalao, avaliacoes: abaAvaliacoes, relatorios: abaRelatorios,
     };
     try {
       $c.innerHTML = '';
@@ -1504,7 +1696,9 @@
   // --- Cartão de um agendamento (usado em Pedidos, Agenda e na ficha)
   function cartaoAgendamento(a, { comData = false, comAcoes = true } = {}) {
     const c = a.cliente ?? {};
-    const alerta = [c.alergias && `Alergias: ${c.alergias}`, c.necessidades_especificas && `Necessidades: ${c.necessidades_especificas}`]
+    const alerta = [c.alergias && `Alergias: ${c.alergias}`, c.necessidades_especificas && `Necessidades: ${c.necessidades_especificas}`,
+      ...(a.conflitos ?? []).map((x) => `⚠ Mesmo horário que ${x.nome} (${fmt.hora(x.inicio)} às ${fmt.hora(x.fim)}, confirmada)`),
+      (a.sem_remy || c.sem_remy) && `Remy longe${c.motivo_sem_remy ? ` (${MOTIVO_REMY_TXT[c.motivo_sem_remy]})` : ''}`]
       .filter(Boolean).map((t) => `<p class="alerta-cliente">${esc(t)}</p>`).join('');
     const botoes = {
       solicitado: [['confirmar', 'Confirmar', ''], ['recusar', 'Recusar', 'perigo']],
@@ -1579,7 +1773,9 @@
                 { sim: acao === 'recusar' ? 'Sim, recusar' : 'Sim, cancelar' })) return;
           b.disabled = true;
           try {
-            const r = await painelApi(`/agendamentos/${a.id}/${acao}`, { metodo: 'POST' });
+            const r = await seChocarPerguntar((forcar) =>
+              painelApi(`/agendamentos/${a.id}/${acao}`, { metodo: 'POST', corpo: forcar ? { forcar: true } : {} }));
+            if (!r) { b.disabled = false; return; }  // a Lucy preferiu não confirmar
             // Depois da ação: botão para avisar a cliente pelo WhatsApp (mensagem pronta)
             const zap = linkZapCliente(r, r.status);
             let extra = (zap && ['confirmar', 'recusar', 'cancelar', 'concluir'].includes(acao)
@@ -1709,13 +1905,17 @@
           observacao: form.elements.observacao.value.trim(),
         };
         if (a) {
-          await painelApi(`/agendamentos/${a.id}`, { metodo: 'PATCH', corpo });
+          if (!await seChocarPerguntar((forcar) => painelApi(`/agendamentos/${a.id}`, { metodo: 'PATCH', corpo: { ...corpo, forcar } }))) {
+            throw new ErroApi('Nada foi alterado. Escolha outro horário, se quiser.', 0);
+          }
           avisar('Horário atualizado.');
         } else {
           if (!$sel.value) throw new ErroApi('Escolha a cliente (ou "Cliente nova").', 400);
           if ($sel.value === 'nova') corpo.cliente = { nome: form.elements.nome.value.trim(), whatsapp: form.elements.whatsapp.value.trim() };
           else corpo.cliente_id = $sel.value;
-          await painelApi('/agendamentos', { metodo: 'POST', corpo });
+          if (!await seChocarPerguntar((forcar) => painelApi('/agendamentos', { metodo: 'POST', corpo: { ...corpo, forcar } }))) {
+            throw new ErroApi('Nada foi marcado. Escolha outro horário, se quiser.', 0);
+          }
           avisar('Horário marcado e confirmado!');
         }
         $onde.innerHTML = '';
@@ -1801,6 +2001,119 @@
     });
   }
 
+  // --- ABA: RELATÓRIOS (quanto entrou, o que mais saiu, quem mais veio)
+  async function abaRelatorios($c, resto, params) {
+    const hoje = hojeNoSalao();
+    const inicioMes = (d) => `${d.slice(0, 7)}-01`;
+    const fimMes = (d) => somarDias(inicioMes(somarDias(inicioMes(d), 32)), -1);
+    const segunda = somarDias(hoje, -((new Date(`${hoje}T12:00:00Z`).getUTCDay() + 6) % 7));
+    const mesPassado = somarDias(inicioMes(hoje), -1);
+    const atalhos = [
+      ['Esta semana', segunda, hoje], ['Este mês', inicioMes(hoje), hoje],
+      ['Mês passado', inicioMes(mesPassado), mesPassado], ['Este ano', `${hoje.slice(0, 4)}-01-01`, hoje],
+    ];
+    const de = params.get('de') ?? inicioMes(hoje), ate = params.get('ate') ?? hoje;
+    const r = await painelApi(`/relatorio?de=${encodeURIComponent(de)}&ate=${encodeURIComponent(ate)}`);
+    const dataCurta = (d) => d.split('-').reverse().join('/');
+    const periodoTxt = `${dataCurta(r.de)} a ${dataCurta(r.ate)}`;
+    const at = r.atendimentos, din = r.dinheiro;
+    const numero = (valor, rotulo, extra = '') => `<div class="numero"><strong>${valor}</strong><span>${rotulo}</span>${extra}</div>`;
+
+    $c.innerHTML = `
+      <h2>Relatórios</h2>
+      <div class="acoes-item" role="group" aria-label="Período">
+        ${atalhos.map(([t, d1, d2]) => `<a class="botao pequeno ${d1 === r.de && d2 === r.ate ? '' : 'secundario'}" href="#/painel/relatorios?de=${d1}&ate=${d2}">${t}</a>`).join('')}
+      </div>
+      <form class="periodo" id="form-periodo">
+        <label>De <input type="date" name="de" value="${esc(r.de)}" max="${esc(hoje)}"></label>
+        <label>Até <input type="date" name="ate" value="${esc(r.ate)}"></label>
+        <button class="pequeno">Ver</button>
+      </form>
+      <p class="suave">Período: <strong>${periodoTxt}</strong> (pelo dia do atendimento).</p>
+
+      <div class="cartao">
+        <h3>Dinheiro</h3>
+        <div class="numeros">
+          ${numero(fmt.reais(din.recebido), 'recebido')}
+          ${numero(fmt.reais(din.a_receber), 'a receber', din.a_receber_qtd ? `<small>${din.a_receber_qtd} atendimento${din.a_receber_qtd > 1 ? 's' : ''} sem pagamento</small>` : '')}
+          ${numero(fmt.reais(din.previsto), 'previsto', '<small>horários confirmados</small>')}
+        </div>
+        <ul class="itens">
+          ${[['pix', 'Pix'], ['cartao', 'Cartão'], ['dinheiro', 'Dinheiro']].map(([f, t]) => `<li><span>${t}</span><span>${fmt.reais(din.por_forma[f])}</span></li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="cartao">
+        <h3>Atendimentos</h3>
+        <div class="numeros">
+          ${numero(at.concluidos, 'realizados')} ${numero(at.faltas, 'faltas')} ${numero(at.cancelados, 'cancelados')}
+          ${numero(r.clientes_novas, 'clientes novas')}
+        </div>
+        <p class="suave" style="margin:0">Ainda no período: ${at.confirmados} confirmado${at.confirmados === 1 ? '' : 's'} e ${at.pedidos} pedido${at.pedidos === 1 ? '' : 's'} esperando resposta.
+          ${at.recusados ? `${at.recusados} recusado${at.recusados === 1 ? '' : 's'}.` : ''} Pelo site: ${at.pelo_site}.</p>
+      </div>
+
+      <div class="cartao">
+        <h3>Serviços mais feitos</h3>
+        ${r.servicos.length ? `<ul class="itens">${r.servicos.map((x) => `
+          <li><span>${esc(x.nome)} <span class="suave">× ${x.quantidade}</span></span><span>${fmt.reais(x.valor)}</span></li>`).join('')}</ul>`
+          : '<p class="suave" style="margin:0">Nenhum atendimento realizado no período.</p>'}
+      </div>
+
+      <div class="cartao">
+        <h3>Clientes que mais vieram</h3>
+        ${r.clientes.length ? `<ol class="ranking">${r.clientes.map((x) => `
+          <li><a href="#/painel/clientes/${esc(x.id)}">${esc(x.nome)}</a> <span class="suave">· ${x.visitas} visita${x.visitas > 1 ? 's' : ''} · ${fmt.reais(x.valor)}</span></li>`).join('')}</ol>`
+          : '<p class="suave" style="margin:0">Nenhum atendimento realizado no período.</p>'}
+      </div>
+
+      <div class="cartao">
+        <h3>Avaliações</h3>
+        ${r.avaliacoes.quantidade ? `<p style="margin:0"><span class="estrelas">${'★'.repeat(Math.round(r.avaliacoes.media))}${'☆'.repeat(5 - Math.round(r.avaliacoes.media))}</span>
+          <strong>${String(r.avaliacoes.media).replace('.', ',')}</strong> de média em ${r.avaliacoes.quantidade} avaliaç${r.avaliacoes.quantidade > 1 ? 'ões' : 'ão'}.
+          <a href="#/painel/avaliacoes">Ver todas</a></p>` : '<p class="suave" style="margin:0">Nenhuma avaliação no período.</p>'}
+      </div>
+
+      <div class="lista-links">
+        <button class="secundario" id="baixar-csv" ${r.linhas.length ? '' : 'disabled'}>Baixar planilha (abre no Excel)</button>
+        ${cfgPainel?.whatsapp_lucy ? `<a class="botao secundario" target="_blank" rel="noopener" id="resumo-zap"
+          href="${esc(zapCom(cfgPainel.whatsapp_lucy, resumoRelatorio(r, periodoTxt)))}">${ICONE_ZAP} Mandar o resumo para o meu WhatsApp</a>` : ''}
+      </div>`;
+
+    document.getElementById('form-periodo').onsubmit = (ev) => {
+      ev.preventDefault();
+      const f = ev.target;
+      if (!f.de.value || !f.ate.value) return;
+      location.hash = `#/painel/relatorios?de=${f.de.value}&ate=${f.ate.value}`;
+    };
+    document.getElementById('baixar-csv').onclick = () => {
+      // CSV com ";" e BOM: o Excel em português abre direto, com acentos certos
+      const cel = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+      const linhas = [['Data', 'Hora', 'Cliente', 'WhatsApp', 'Serviços', 'Valor', 'Situação', 'Pago', 'Forma', 'Nota']]
+        .concat(r.linhas.map((l) => [
+          dataCurta(dataNoFuso(l.inicio)), fmt.hora(l.inicio), l.cliente, zapBonito(l.whatsapp),
+          l.servicos, String(l.valor.toFixed(2)).replace('.', ','), STATUS[l.status] ?? l.status,
+          l.pago ? 'sim' : 'não', l.forma_pagamento ? FORMAS_TXT[l.forma_pagamento] : '', l.nota ?? '']));
+      const csv = '\ufeff' + linhas.map((l) => l.map(cel).join(';')).join('\r\n');
+      const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+      const $a = Object.assign(document.createElement('a'), { href: url, download: `relatorio-lucy-${r.de}-a-${r.ate}.csv` });
+      document.body.appendChild($a); $a.click(); $a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    };
+  }
+  function resumoRelatorio(r, periodoTxt) {
+    const top = r.servicos.slice(0, 3).map((x) => `${x.nome} (${x.quantidade})`).join(', ');
+    return [
+      `📊 Resumo do salão — ${periodoTxt}`,
+      `Recebido: ${fmt.reais(r.dinheiro.recebido)} (Pix ${fmt.reais(r.dinheiro.por_forma.pix)}, cartão ${fmt.reais(r.dinheiro.por_forma.cartao)}, dinheiro ${fmt.reais(r.dinheiro.por_forma.dinheiro)})`,
+      r.dinheiro.a_receber ? `A receber: ${fmt.reais(r.dinheiro.a_receber)}` : '',
+      `Atendimentos: ${r.atendimentos.concluidos} · faltas: ${r.atendimentos.faltas} · cancelados: ${r.atendimentos.cancelados}`,
+      `Clientes novas: ${r.clientes_novas}`,
+      top ? `Mais feitos: ${top}` : '',
+      r.avaliacoes.quantidade ? `Avaliações: ${String(r.avaliacoes.media).replace('.', ',')} ★ (${r.avaliacoes.quantidade})` : '',
+    ].filter(Boolean).join('\n');
+  }
+
   // --- ABA: RETORNOS (só a Lucy vê; avisar a cliente é opcional)
   async function abaRetornos($c) {
     const lista = await painelApi('/retornos');
@@ -1841,6 +2154,8 @@
     { nome: 'alergias', rotulo: 'Alergias', tipo: 'area', max: 500 },
     { nome: 'necessidades_especificas', rotulo: 'Necessidades específicas', tipo: 'area', max: 500, dica: 'Acessibilidade, mobilidade, sensibilidades, gestação…' },
     { nome: 'observacoes', rotulo: 'Anotações', tipo: 'area', max: 2000 },
+    { nome: 'sem_remy', rotulo: 'Prefere o Remy longe', tipo: 'check' },
+    { nome: 'motivo_sem_remy', rotulo: 'Motivo (Remy)', tipo: 'select', opcoes: [['', '—'], ...MOTIVOS_REMY] },
   ];
 
   async function abaClientes($c, resto) {
@@ -1900,6 +2215,7 @@
         <p><a href="${linkZap(cl.whatsapp)}" target="_blank" rel="noopener">${esc(zapBonito(cl.whatsapp))}</a>${cl.email ? ' · ' + esc(cl.email) : ''}</p>
         ${cl.alergias ? `<p class="alerta-cliente">Alergias: ${esc(cl.alergias)}</p>` : ''}
         ${cl.necessidades_especificas ? `<p class="alerta-cliente">Necessidades: ${esc(cl.necessidades_especificas)}</p>` : ''}
+        ${cl.sem_remy ? `<p class="alerta-cliente">Remy longe${cl.motivo_sem_remy ? ` (${esc(MOTIVO_REMY_TXT[cl.motivo_sem_remy])})` : ''}</p>` : ''}
         ${linha('Nascimento', cl.data_nascimento && fmt.partesDoDia(cl.data_nascimento).longa.replace(/^[^,]+, /, ''))}
         ${cl.observacoes ? `<p style="white-space:pre-line"><span class="suave">Anotações:</span> ${esc(cl.observacoes)}</p>` : ''}
         <div class="acoes-item">
@@ -1987,7 +2303,8 @@
       campos: [
         { nome: 'nome', rotulo: 'Nome', obrigatorio: true, max: 80 },
         { nome: 'descricao', rotulo: 'Descrição', max: 200, dica: 'Ex.: Com lavagem grátis' },
-        { nome: 'duracao_min', rotulo: 'Duração (minutos)', tipo: 'numero', obrigatorio: true, min: 5, maxNum: 600 },
+        { nome: 'duracao_min', rotulo: 'Duração (minutos)', tipo: 'numero', obrigatorio: true, min: 5, maxNum: 600,
+          dica: 'Só você vê. Serve para o sistema avisar quando dois horários se cruzam.' },
         { nome: 'preco', rotulo: 'Preço (R$)', tipo: 'dinheiro', obrigatorio: true },
         { nome: 'retorno_dias', rotulo: 'A cliente costuma voltar a cada (dias)', tipo: 'numero', min: 1, dica: 'Deixe vazio se não quiser acompanhar o retorno.' },
         { nome: 'ordem', rotulo: 'Ordem na lista', tipo: 'numero', min: 0 },
@@ -2132,6 +2449,10 @@
       { nome: 'dias_a_frente', rotulo: 'Até quantos dias no futuro dá para pedir', tipo: 'numero', min: 1, maxNum: 180 },
       { nome: 'retorno_momento', rotulo: 'Quando oferecer o retorno', tipo: 'select',
         opcoes: [['ao_finalizar', 'Ao finalizar o serviço'], ['apos_pagamento', 'Depois do pagamento']] },
+    ]],
+    ['O Remy (o gato do salão)', [
+      { nome: 'remy_ligado', rotulo: 'Mostrar o Remy no site', tipo: 'check',
+        dica: 'Desligado: o site não fala do Remy nem pergunta se a cliente prefere ele longe.' },
     ]],
     ['Catálogos (aparecem na página inicial para as clientes)', [
       { nome: 'codigo_avon', rotulo: 'Código de consultora Avon', max: 40 }, { nome: 'link_avon', rotulo: 'Link do catálogo Avon', max: 300, dica: 'Comece com https://' },
