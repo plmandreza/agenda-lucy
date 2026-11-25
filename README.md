@@ -15,6 +15,7 @@ Sistema de agendamento para o salão da Lucy: as clientes pedem horários pelo s
 | Banco de dados | PostgreSQL no Supabase (acesso só pelo servidor, com RLS ligado e sem políticas públicas) |
 | Login | Supabase Auth (só o e-mail definido em `ADMIN_EMAIL` entra no painel) |
 | Hospedagem | Vercel (HTTPS) |
+| Versão React | React 19 + Vite, na pasta `react/` (mesmas telas das clientes, mesmo servidor) |
 
 ## O que o sistema faz
 
@@ -50,5 +51,7 @@ Sistema de agendamento para o salão da Lucy: as clientes pedem horários pelo s
 2. Crie o usuário da Lucy em Authentication → Users.
 3. Configure as variáveis de ambiente (veja `.env.example`): `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, `ADMIN_EMAIL`.
 4. Local: copie `.env.example` para `.env`, preencha, rode `npm install` e `node --env-file=.env server.js` (abre em `http://localhost:3000`). Na Vercel, cada push publica sozinho.
+
+Versão em React: veja [react/README.md](react/README.md).
 
 Ideias de melhoria: veja [PARA-O-FUTURO.md](PARA-O-FUTURO.md).
