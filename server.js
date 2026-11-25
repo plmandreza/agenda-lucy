@@ -596,6 +596,21 @@ const soLucy = [exigirConfiguracao, exigirLucy];
 
 // --- 7a. Validação genérica dos formulários --------------------------
 // Cada campo diz o tipo esperado; o servidor confere tudo antes de gravar.
+// Chave Pix no formato que o banco exige:
+//  e-mail (minúsculo) · chave aleatória · celular +55DDDNÚMERO · CPF (11 números) · CNPJ (14 números).
+// Celular escrito "do jeito comum" — (85) 90000-0000 — vira +5585900000000.
+// 11 números sem parênteses nem "+" são lidos como CPF (regra do Pix: celular sempre com +55).
+function normalizarChavePix(v) {
+  const t = String(v ?? '').trim();
+  if (!t) return null;
+  if (t.includes('@')) return emailValido(t) && t.length <= 77 ? t.toLowerCase() : null;
+  if (RE_UUID.test(t)) return t.toLowerCase();
+  const n = t.replace(/\D/g, '');
+  if (t.startsWith('+')) return /^55\d{10,11}$/.test(n) ? '+' + n : null;
+  if (/[()]/.test(t) || /^\d{2}\s+\d{4,5}[\s-]?\d{4}$/.test(t)) return /^\d{10,11}$/.test(n) ? '+55' + n : null;
+  if (/^[\d.\-/\s]+$/.test(t) && (n.length === 11 || n.length === 14)) return n;
+  return null;
+}
 const TIPOS = {
   texto: (v, c) => {
     const t = String(v ?? '').trim();
@@ -632,14 +647,10 @@ const TIPOS = {
   whatsapp: (v) => { if (!v) return null; const n = normalizarWhatsapp(v); if (!n) throw new Error(); return n; },
   // Chave Pix: e-mail, celular (+55...), CPF/CNPJ (só números) ou chave aleatória.
   chavePix: (v) => {
-    const t = String(v ?? '').trim();
-    if (!t) return null;
-    if (emailValido(t) && t.length <= 77) return t.toLowerCase();
-    if (RE_UUID.test(t)) return t.toLowerCase();
-    if (/^\+55\d{10,11}$/.test(t.replace(/[\s()-]/g, ''))) return t.replace(/[\s()-]/g, '');
-    const n = t.replace(/[.\-/\s]/g, '');
-    if (/^\d{11}$|^\d{14}$/.test(n)) return n;
-    throw new Error();
+    if (!String(v ?? '').trim()) return null;
+    const c = normalizarChavePix(v);
+    if (!c) throw new Error();
+    return c;
   },
   email: (v) => {
     const e = String(v ?? '').trim().toLowerCase();
@@ -1013,11 +1024,13 @@ function payloadPix({ chave, nome, cidade, valor, txid }) {
 }
 function pixDoAgendamento(a, cfg) {
   if (!cfg.chave_pix) throw new ErroPublico(409, 'A chave Pix ainda não foi cadastrada no painel (aba Salão).');
+  const chave = normalizarChavePix(cfg.chave_pix);
+  if (!chave) throw new ErroPublico(409, 'A chave Pix cadastrada está num formato que o banco não aceita. Confira na aba Salão.');
   const valor = Number(a.valor_total);
   return {
     valor,
     copia_e_cola: payloadPix({
-      chave: cfg.chave_pix, nome: cfg.nome_recebedor_pix || cfg.nome_salao, cidade: cfg.cidade_pix,
+      chave, nome: cfg.nome_recebedor_pix || cfg.nome_salao, cidade: cfg.cidade_pix,
       valor, txid: 'LUCY' + String(a.id).replace(/-/g, '').slice(0, 12).toUpperCase(),
     }),
   };
